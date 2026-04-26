@@ -89,50 +89,78 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
     if (gps.distance < 0.02) {
       setStartedAt(null);
+      setMaxSpeed(0);
       gps.resetDistance();
       return;
     }
 
     const durationHours = durationMinutes / 60;
     const avgSpeedKmh = durationHours > 0 ? gps.distance / durationHours : 0;
+
     const consumedFuelL = (gps.distance * settings.consumptionRate) / 100;
+
+    const autonomyBeforeKm =
+      settings.consumptionRate > 0
+        ? (settings.currentFuelL / settings.consumptionRate) * 100
+        : 0;
+
+    const newFuelL = Math.max(0, settings.currentFuelL - consumedFuelL);
+
+    const autonomyAfterKm =
+      settings.consumptionRate > 0
+        ? (newFuelL / settings.consumptionRate) * 100
+        : 0;
 
     const safePath = gps.path ?? [];
     const start = safePath[0];
     const end = safePath[safePath.length - 1];
 
-    let startInfo: ReverseGeocodeResult = { address: "Départ inconnu", city: "" };
-    let endInfo: ReverseGeocodeResult = { address: "Arrivée inconnue", city: "" };
+    let startInfo: ReverseGeocodeResult = {
+      address: "Départ inconnu",
+      city: "",
+    };
+
+    let endInfo: ReverseGeocodeResult = {
+      address: "Arrivée inconnue",
+      city: "",
+    };
 
     if (start && end) {
       startInfo = await reverseGeocode(start.lat, start.lng);
       endInfo = await reverseGeocode(end.lat, end.lng);
     }
 
- await addTrip({
-    id: crypto.randomUUID(),
-    startedAt: startedAt.toISOString(),
-    endedAt: endedAt.toISOString(),
-    distanceKm: gps.distance,
-    avgSpeedKmh,
-    maxSpeedKmh: maxSpeed,
-    consumedFuelL,
-    consumptionRateL100: settings.consumptionRate,
-    durationMinutes,
-    path: safePath,
+    await addTrip({
+      id: crypto.randomUUID(),
+      startedAt: startedAt.toISOString(),
+      endedAt: endedAt.toISOString(),
 
-    startLat: start?.lat,
-    startLng: start?.lng,
-    endLat: end?.lat,
-    endLng: end?.lng,
+      distanceKm: gps.distance,
+      durationMinutes,
 
-    startAddress: startInfo.address,
-    startCity: startInfo.city,
-    endAddress: endInfo.address,
-    endCity: endInfo.city,
-});
+      avgSpeedKmh,
+      maxSpeedKmh: maxSpeed,
 
-    await updateFuel(Math.max(0, settings.currentFuelL - consumedFuelL));
+      consumedFuelL,
+      consumptionRateL100: settings.consumptionRate,
+
+      autonomyBeforeKm,
+      autonomyAfterKm,
+
+      path: safePath,
+
+      startLat: start?.lat,
+      startLng: start?.lng,
+      endLat: end?.lat,
+      endLng: end?.lng,
+
+      startAddress: startInfo.address,
+      startCity: startInfo.city,
+      endAddress: endInfo.address,
+      endCity: endInfo.city,
+    });
+
+    await updateFuel(newFuelL);
 
     setStartedAt(null);
     setMaxSpeed(0);

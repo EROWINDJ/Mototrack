@@ -17,12 +17,20 @@ export interface LocalTrip {
   id: string;
   startedAt: string;
   endedAt: string;
+
   distanceKm: number;
   avgSpeedKmh: number;
   maxSpeedKmh: number;
+
   consumedFuelL: number;
   consumptionRateL100: number;
+
   durationMinutes: number;
+
+  // 🔥 AJOUT
+  autonomyBeforeKm?: number;
+  autonomyAfterKm?: number;
+
   maxLeanAngle?: number;
   speedWarnings?: SpeedWarning[];
   shareText?: string;
