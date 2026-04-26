@@ -82,10 +82,6 @@ export default function Home() {
             <button onClick={handleRefuel} style={styles.refuelButton}>
               ⛽ Faire le plein
             </button>
-
-            <button onClick={resetRoute} style={styles.resetButton}>
-              Reset
-            </button>
           </>
         )}
       </div>
