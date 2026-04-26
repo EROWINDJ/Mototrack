@@ -1,50 +1,84 @@
-import { useEffect, useMemo, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useLocalSettings } from "@/hooks/useLocalSettings";
+
+import { getAllTrips, type LocalTrip } from "@/lib/localDb";
 import { useTracking } from "@/context/TrackingContext";
 
+type Position = {
+  lat: number;
+  lng: number;
+};
+
 export default function MapView() {
+  const { position, isTracking, speed, accuracy, distance } = useTracking();
+
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.CircleMarker | null>(null);
-  const polylineRef = useRef<L.Polyline | null>(null);
+  const currentPolylineRef = useRef<L.Polyline | null>(null);
+  const lastTripPolylineRef = useRef<L.Polyline | null>(null);
   const hasCenteredRef = useRef(false);
 
-  const { settings } = useLocalSettings();
-
-  const {
-    position,
-    path,
-    speed,
-    distance,
-    accuracy,
-    gpsStatus,
-    isTracking,
-    toggleTracking,
-    resetRoute,
-  } = useTracking();
+  const [lastTrip, setLastTrip] = useState<LocalTrip | null>(null);
 
   useEffect(() => {
     if (mapRef.current) return;
 
     const map = L.map("map", {
-      zoomControl: true,
+      zoomControl: false,
     }).setView([48.8566, 2.3522], 13);
 
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap",
+      attribution: "&copy; OpenStreetMap",
     }).addTo(map);
 
     mapRef.current = map;
 
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      markerRef.current = null;
-      polylineRef.current = null;
-      hasCenteredRef.current = false;
-    };
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 250);
   }, []);
+
+  useEffect(() => {
+    const loadLastTrip = async () => {
+      const trips = await getAllTrips();
+
+      if (!trips || trips.length === 0) {
+        setLastTrip(null);
+        return;
+      }
+
+      setLastTrip(trips[trips.length - 1]);
+    };
+
+    loadLastTrip();
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (lastTripPolylineRef.current) {
+      lastTripPolylineRef.current.remove();
+      lastTripPolylineRef.current = null;
+    }
+
+    const points = lastTrip?.path || [];
+
+    if (points.length < 2) return;
+
+    const latLngs: L.LatLngExpression[] = points.map((p: Position) => [
+      p.lat,
+      p.lng,
+    ]);
+
+    lastTripPolylineRef.current = L.polyline(latLngs, {
+      color: "#64748b",
+      weight: 5,
+      opacity: 0.55,
+      dashArray: "8 8",
+    }).addTo(map);
+  }, [lastTrip]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -57,275 +91,183 @@ export default function MapView() {
         radius: 8,
         color: "#020617",
         weight: 3,
-        fillColor: "#22c55e",
+        fillColor: "#ef4444",
         fillOpacity: 1,
       }).addTo(map);
     } else {
       markerRef.current.setLatLng(latLng);
     }
 
+    if (isTracking) {
+      map.setView(latLng, map.getZoom() < 16 ? 16 : map.getZoom(), {
+        animate: true,
+      });
+
+      hasCenteredRef.current = true;
+      return;
+    }
+
     if (!hasCenteredRef.current) {
       map.setView(latLng, 16);
       hasCenteredRef.current = true;
     }
-  }, [position]);
+  }, [position, isTracking]);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    if (path.length === 0) {
-      if (polylineRef.current) {
-        polylineRef.current.remove();
-        polylineRef.current = null;
+    const path = useTrackingPathFromGps();
+
+    if (!path || path.length < 2) {
+      if (currentPolylineRef.current) {
+        currentPolylineRef.current.remove();
+        currentPolylineRef.current = null;
       }
       return;
     }
 
-    const latLngs: L.LatLngExpression[] = path.map((point) => [
-      point.lat,
-      point.lng,
+    const latLngs: L.LatLngExpression[] = path.map((p: Position) => [
+      p.lat,
+      p.lng,
     ]);
 
-    if (!polylineRef.current) {
-      polylineRef.current = L.polyline(latLngs, {
-        color: "#22c55e",
-        weight: 5,
-        opacity: 0.9,
-      }).addTo(map);
+    if (currentPolylineRef.current) {
+      currentPolylineRef.current.setLatLngs(latLngs);
     } else {
-      polylineRef.current.setLatLngs(latLngs);
+      currentPolylineRef.current = L.polyline(latLngs, {
+        color: "#22c55e",
+        weight: 6,
+        opacity: 0.95,
+      }).addTo(map);
     }
-  }, [path]);
+  }, [isTracking, position]);
 
-  const autonomy = useMemo(() => {
-    if (!settings || settings.consumptionRate <= 0) return 0;
+  const centerMap = () => {
+    if (!mapRef.current || !position) return;
 
-    const currentFuelL = settings.currentFuelL ?? settings.tankSize;
-    const currentAutonomy = (currentFuelL / settings.consumptionRate) * 100;
-
-    return Math.max(0, currentAutonomy - distance);
-  }, [settings, distance]);
-
-  const handleReset = () => {
-    resetRoute();
-    hasCenteredRef.current = false;
-
-    if (polylineRef.current) {
-      polylineRef.current.remove();
-      polylineRef.current = null;
-    }
-  };
-
-  const handleCenter = () => {
-    const map = mapRef.current;
-    if (!map || !position) return;
-
-    map.setView([position.lat, position.lng], 16);
-    hasCenteredRef.current = true;
+    mapRef.current.setView([position.lat, position.lng], 16, {
+      animate: true,
+    });
   };
 
   return (
-    <div style={styles.container}>
+    <div style={styles.wrapper}>
       <div id="map" style={styles.map} />
 
-      <div style={styles.hud}>
-        <div style={styles.gpsPill}>● GPS {gpsStatus.toUpperCase()}</div>
-        <div style={styles.accuracyPill}>
+      <div style={styles.topLeft}>
+        <div style={styles.badgeGreen}>
+          ● {isTracking ? "GPS TRACKING" : "GPS STOPPED"}
+        </div>
+        <div style={styles.badgeDark}>
           Précision : {accuracy ? `${Math.round(accuracy)} m` : "-"}
         </div>
       </div>
 
-      <div style={styles.speedCard}>
-        <div style={styles.speedValue}>{Math.round(speed)}</div>
-        <div style={styles.speedUnit}>KM/H</div>
+      <div style={styles.speedBox}>
+        <strong>{Math.round(speed || 0)}</strong>
+        <span>KM/H</span>
       </div>
 
-      <button style={styles.centerButton} onClick={handleCenter}>
+      <button onClick={centerMap} style={styles.centerButton}>
         📍
       </button>
 
       <div style={styles.bottomPanel}>
         <div>
-          <div style={styles.label}>Distance</div>
-          <div style={styles.value}>{distance.toFixed(2)} km</div>
+          <span>DISTANCE</span>
+          <strong>{distance.toFixed(2)} km</strong>
         </div>
-
-        <div>
-          <div style={styles.label}>Autonomie</div>
-          <div style={styles.value}>{autonomy.toFixed(0)} km</div>
-        </div>
-      </div>
-
-      <div style={styles.buttons}>
-        <button style={styles.mainButton} onClick={toggleTracking}>
-          {isTracking ? "Arrêter" : "Démarrer"}
-        </button>
-
-        {!isTracking && (
-          <button style={styles.resetButton} onClick={handleReset}>
-            Reset
-          </button>
-        )}
       </div>
     </div>
   );
 }
 
-const styles: Record<string, CSSProperties> = {
-  container: {
-    position: "relative",
-    height: "100vh",
+function useTrackingPathFromGps(): Position[] {
+  const tracking = useTracking();
+  return tracking.path || [];
+}
+
+const styles = {
+  wrapper: {
+    height: "100%",
     width: "100%",
+    position: "relative" as const,
     overflow: "hidden",
-    background: "#0f172a",
   },
 
   map: {
     height: "100%",
     width: "100%",
-    filter: "saturate(0.95) contrast(1.03)",
   },
 
-  hud: {
-    position: "absolute",
-    top: 18,
-    left: 18,
+  topLeft: {
+    position: "absolute" as const,
+    top: 16,
+    left: 16,
+    zIndex: 1000,
     display: "flex",
-    flexDirection: "column",
+    flexDirection: "column" as const,
     gap: 10,
-    zIndex: 500,
   },
 
-  gpsPill: {
-    padding: "10px 16px",
-    borderRadius: 999,
-    background: "rgba(15,23,42,0.88)",
-    border: "1px solid rgba(34,197,94,0.55)",
+  badgeGreen: {
+    background: "rgba(15, 23, 42, 0.9)",
     color: "#22c55e",
+    padding: "10px 14px",
+    borderRadius: 999,
     fontWeight: 800,
     fontSize: 14,
   },
 
-  accuracyPill: {
+  badgeDark: {
+    background: "rgba(15, 23, 42, 0.9)",
+    color: "white",
     padding: "10px 14px",
     borderRadius: 999,
-    background: "rgba(15,23,42,0.88)",
-    border: "1px solid rgba(255,255,255,0.14)",
-    color: "white",
     fontWeight: 700,
-    fontSize: 13,
+    fontSize: 14,
   },
 
-  speedCard: {
-    position: "absolute",
-    top: 18,
-    right: 18,
-    width: 74,
-    height: 74,
-    borderRadius: 22,
-    background: "rgba(15,23,42,0.9)",
-    border: "1px solid rgba(255,255,255,0.14)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 500,
-  },
-
-  speedValue: {
-    fontSize: 34,
-    fontWeight: 900,
-    lineHeight: 1,
+  speedBox: {
+    position: "absolute" as const,
+    top: 16,
+    right: 16,
+    zIndex: 1000,
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    background: "rgba(15, 23, 42, 0.92)",
     color: "white",
-  },
-
-  speedUnit: {
-    marginTop: 4,
-    fontSize: 10,
-    fontWeight: 800,
-    opacity: 0.75,
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "center",
+    alignItems: "center",
   },
 
   centerButton: {
-    position: "absolute",
+    position: "absolute" as const,
     right: 18,
-    bottom: 184,
-    width: 48,
-    height: 48,
-    borderRadius: "50%",
-    border: "1px solid rgba(255,255,255,0.16)",
-    background: "rgba(15,23,42,0.9)",
+    bottom: 145,
+    zIndex: 1000,
+    background: "#0f172a",
     color: "white",
-    fontSize: 20,
-    zIndex: 500,
+    borderRadius: "50%",
+    width: 52,
+    height: 52,
+    border: "none",
+    fontSize: 22,
   },
 
   bottomPanel: {
-    position: "absolute",
-    left: 18,
-    right: 18,
-    bottom: 116,
-    minHeight: 72,
-    padding: "14px 18px",
-    borderRadius: 24,
-    background: "rgba(15,23,42,0.92)",
-    border: "1px solid rgba(255,255,255,0.14)",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    zIndex: 500,
-  },
-
-  label: {
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: "0.08em",
-    opacity: 0.65,
-    fontWeight: 800,
-  },
-
-  value: {
-    marginTop: 4,
-    fontSize: 18,
-    fontWeight: 900,
-    color: "white",
-  },
-
-  buttons: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 52,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "0 20px",
-    gap: 12,
+    position: "absolute" as const,
+    left: 16,
+    right: 16,
+    bottom: 78,
     zIndex: 1000,
-  },
-
-  mainButton: {
-    minWidth: 120,
-    padding: "14px 20px",
-    borderRadius: 12,
-    background: "#22c55e",
+    background: "rgba(15, 23, 42, 0.92)",
+    borderRadius: 26,
+    padding: "16px 22px",
     color: "white",
-    fontSize: 16,
-    fontWeight: 800,
-    border: "none",
-    boxShadow: "0 8px 24px rgba(34,197,94,0.4)",
-  },
-
-  resetButton: {
-    minWidth: 100,
-    padding: "14px 20px",
-    borderRadius: 12,
-    background: "#ef4444",
-    color: "white",
-    fontSize: 16,
-    fontWeight: 800,
-    border: "none",
-    boxShadow: "0 8px 24px rgba(239,68,68,0.4)",
   },
 };
