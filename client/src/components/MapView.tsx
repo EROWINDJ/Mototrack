@@ -2,17 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { getAllTrips, type LocalTrip } from "@/lib/localDb";
+import { getAllTrips, type LocalTrip, type TripPoint } from "@/lib/localDb";
 import { useTracking } from "@/context/TrackingContext";
 
-type Position = {
-  lat: number;
-  lng: number;
-};
-
 export default function MapView() {
-  const { position, isTracking, speed, accuracy, distance } = useTracking();
+  const { position, isTracking, speed, accuracy, distance, path } = useTracking();
 
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markerRef = useRef<L.CircleMarker | null>(null);
   const currentPolylineRef = useRef<L.Polyline | null>(null);
@@ -22,52 +18,49 @@ export default function MapView() {
   const [lastTrip, setLastTrip] = useState<LocalTrip | null>(null);
 
   useEffect(() => {
-    if (mapRef.current) return;
+    if (!mapContainerRef.current || mapRef.current) return;
 
-    const map = L.map("map", {
+    const map = L.map(mapContainerRef.current, {
       zoomControl: false,
+      attributionControl: false,
     }).setView([48.8566, 2.3522], 13);
 
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer("https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png", {
+      maxZoom: 20,
       attribution: "&copy; OpenStreetMap",
     }).addTo(map);
 
     mapRef.current = map;
 
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 250);
+    setTimeout(() => map.invalidateSize(), 300);
   }, []);
 
   useEffect(() => {
     const loadLastTrip = async () => {
       const trips = await getAllTrips();
-
-      if (!trips || trips.length === 0) {
-        setLastTrip(null);
-        return;
-      }
-
-      setLastTrip(trips[trips.length - 1]);
+      setLastTrip(trips.length > 0 ? trips[0] : null);
     };
 
-    loadLastTrip();
+    void loadLastTrip();
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
+    setTimeout(() => map.invalidateSize(), 150);
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !lastTrip?.path || lastTrip.path.length < 2) return;
+
     if (lastTripPolylineRef.current) {
       lastTripPolylineRef.current.remove();
       lastTripPolylineRef.current = null;
     }
 
-    const points = lastTrip?.path || [];
-
-    if (points.length < 2) return;
-
-    const latLngs: L.LatLngExpression[] = points.map((p: Position) => [
+    const latLngs: L.LatLngTuple[] = lastTrip.path.map((p: TripPoint) => [
       p.lat,
       p.lng,
     ]);
@@ -84,7 +77,7 @@ export default function MapView() {
     const map = mapRef.current;
     if (!map || !position) return;
 
-    const latLng: L.LatLngExpression = [position.lat, position.lng];
+    const latLng: L.LatLngTuple = [position.lat, position.lng];
 
     if (!markerRef.current) {
       markerRef.current = L.circleMarker(latLng, {
@@ -102,12 +95,8 @@ export default function MapView() {
       map.setView(latLng, map.getZoom() < 16 ? 16 : map.getZoom(), {
         animate: true,
       });
-
       hasCenteredRef.current = true;
-      return;
-    }
-
-    if (!hasCenteredRef.current) {
+    } else if (!hasCenteredRef.current) {
       map.setView(latLng, 16);
       hasCenteredRef.current = true;
     }
@@ -117,8 +106,6 @@ export default function MapView() {
     const map = mapRef.current;
     if (!map) return;
 
-    const path = useTrackingPathFromGps();
-
     if (!path || path.length < 2) {
       if (currentPolylineRef.current) {
         currentPolylineRef.current.remove();
@@ -127,7 +114,7 @@ export default function MapView() {
       return;
     }
 
-    const latLngs: L.LatLngExpression[] = path.map((p: Position) => [
+    const latLngs: L.LatLngTuple[] = path.map((p: TripPoint) => [
       p.lat,
       p.lng,
     ]);
@@ -141,7 +128,7 @@ export default function MapView() {
         opacity: 0.95,
       }).addTo(map);
     }
-  }, [isTracking, position]);
+  }, [path]);
 
   const centerMap = () => {
     if (!mapRef.current || !position) return;
@@ -153,7 +140,7 @@ export default function MapView() {
 
   return (
     <div style={styles.wrapper}>
-      <div id="map" style={styles.map} />
+      <div ref={mapContainerRef} style={styles.map} />
 
       <div style={styles.topLeft}>
         <div style={styles.badgeGreen}>
@@ -183,22 +170,19 @@ export default function MapView() {
   );
 }
 
-function useTrackingPathFromGps(): Position[] {
-  const tracking = useTracking();
-  return tracking.path || [];
-}
-
 const styles = {
   wrapper: {
-    height: "100%",
+    height: "calc(100dvh - 76px)",
     width: "100%",
     position: "relative" as const,
     overflow: "hidden",
+    background: "#0f172a",
   },
 
   map: {
     height: "100%",
     width: "100%",
+    background: "#e5e7eb",
   },
 
   topLeft: {
