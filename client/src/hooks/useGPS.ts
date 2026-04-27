@@ -5,10 +5,12 @@ export type Position = {
   lng: number;
 };
 
+const MAX_ACCEPTABLE_ACCURACY_METERS = 30;
 const MAX_REALISTIC_SPEED_KMH = 130;
 const MIN_DISTANCE_METERS = 5;
 const MIN_DISPLAY_SPEED_KMH = 3;
-const MAX_ACCEPTABLE_ACCURACY_METERS = 35;
+const GPS_TIMEOUT_MS = 10000;
+const GPS_MAXIMUM_AGE_MS = 1000;
 
 export default function useGPS(isTracking: boolean) {
   const [position, setPosition] = useState<Position | null>(null);
@@ -36,23 +38,29 @@ export default function useGPS(isTracking: boolean) {
 
     if (!navigator.geolocation) {
       setGpsStatus("unsupported");
+      setSpeed(0);
       return;
     }
 
-    setGpsStatus("tracking");
+    setGpsStatus("searching");
 
     watchId.current = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
-        const acc = pos.coords.accuracy;
+        const acc = pos.coords.accuracy ?? 9999;
         const now = Date.now();
 
         const newPos: Position = { lat, lng };
 
         setAccuracy(acc);
 
+        // 1. Filtre principal : GPS trop imprécis
         if (acc > MAX_ACCEPTABLE_ACCURACY_METERS) {
+          console.warn(
+            `[GPS] Point ignoré : précision insuffisante (${Math.round(acc)} m)`
+          );
+
           setGpsStatus("low_accuracy");
           setSpeed(0);
           return;
@@ -61,6 +69,7 @@ export default function useGPS(isTracking: boolean) {
         setGpsStatus("tracking");
         setPosition(newPos);
 
+        // 2. Premier point fiable
         if (!lastPosition.current || !lastTime.current) {
           lastPosition.current = newPos;
           lastTime.current = now;
@@ -69,30 +78,52 @@ export default function useGPS(isTracking: boolean) {
           return;
         }
 
-        const d = getDistance(
+        const distanceMeters = getDistance(
           lastPosition.current.lat,
           lastPosition.current.lng,
           lat,
           lng
         );
 
-        const dt = (now - lastTime.current) / 1000;
-        const speedKmh = dt > 0 ? (d / dt) * 3.6 : 0;
+        const elapsedSeconds = (now - lastTime.current) / 1000;
 
-        if (speedKmh > MAX_REALISTIC_SPEED_KMH) {
-          console.warn("Point GPS ignoré : vitesse aberrante", speedKmh);
-          return;
-        }
+        const calculatedSpeedKmh =
+          elapsedSeconds > 0 ? (distanceMeters / elapsedSeconds) * 3.6 : 0;
 
-        if (d < MIN_DISTANCE_METERS) {
+        const gpsSpeedKmh =
+          typeof pos.coords.speed === "number" && pos.coords.speed >= 0
+            ? pos.coords.speed * 3.6
+            : null;
+
+        const rawSpeedKmh = gpsSpeedKmh ?? calculatedSpeedKmh;
+
+        // 3. Filtre vitesse aberrante
+        if (rawSpeedKmh > MAX_REALISTIC_SPEED_KMH) {
+          console.warn(
+            `[GPS] Point ignoré : vitesse aberrante (${Math.round(
+              rawSpeedKmh
+            )} km/h)`
+          );
+
+          setGpsStatus("unrealistic_speed");
           setSpeed(0);
           return;
         }
 
-        const displayedSpeed =
-          speedKmh < MIN_DISPLAY_SPEED_KMH ? 0 : speedKmh;
+        // 4. Petit mouvement parasite : on affiche éventuellement la vitesse GPS,
+        // mais on n'ajoute ni distance ni point au trajet
+        if (distanceMeters < MIN_DISTANCE_METERS) {
+          const displayedSpeed =
+            rawSpeedKmh < MIN_DISPLAY_SPEED_KMH ? 0 : rawSpeedKmh;
 
-        setDistance((prev) => prev + d / 1000);
+          setSpeed(displayedSpeed);
+          return;
+        }
+
+        const displayedSpeed =
+          rawSpeedKmh < MIN_DISPLAY_SPEED_KMH ? 0 : rawSpeedKmh;
+
+        setDistance((prev) => prev + distanceMeters / 1000);
         setSpeed(displayedSpeed);
         setPath((prev) => [...prev, newPos]);
 
@@ -102,17 +133,22 @@ export default function useGPS(isTracking: boolean) {
       (err) => {
         console.error("[GPS ERROR]", err);
 
-        if (err.code === 1) setGpsStatus("permission_denied");
-        else if (err.code === 2) setGpsStatus("position_unavailable");
-        else if (err.code === 3) setGpsStatus("timeout");
-        else setGpsStatus("error");
+        if (err.code === 1) {
+          setGpsStatus("permission_denied");
+        } else if (err.code === 2) {
+          setGpsStatus("position_unavailable");
+        } else if (err.code === 3) {
+          setGpsStatus("timeout");
+        } else {
+          setGpsStatus("error");
+        }
 
         setSpeed(0);
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 10000,
+        maximumAge: GPS_MAXIMUM_AGE_MS,
+        timeout: GPS_TIMEOUT_MS,
       }
     );
 
@@ -126,11 +162,12 @@ export default function useGPS(isTracking: boolean) {
 
   const resetDistance = () => {
     setPosition(null);
-    setDistance(0);
     setPath([]);
     setSpeed(0);
+    setDistance(0);
     setAccuracy(null);
     setGpsStatus(isTracking ? "tracking" : "stopped");
+
     lastPosition.current = null;
     lastTime.current = null;
   };
@@ -153,6 +190,7 @@ function getDistance(
   lon2: number
 ) {
   const R = 6371000;
+
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
 

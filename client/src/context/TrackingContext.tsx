@@ -1,14 +1,26 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import useGPS from "@/hooks/useGPS";
 import { useLocalSettings } from "@/hooks/useLocalSettings";
 import { useLocalTrips } from "@/hooks/useLocalTrips";
+
+const MAX_GPS_ACCURACY_METERS = 30;
+const MIN_TRIP_DISTANCE_KM = 0.02;
 
 type ReverseGeocodeResult = {
   address: string;
   city: string;
 };
 
-async function reverseGeocode(lat: number, lng: number): Promise<ReverseGeocodeResult> {
+async function reverseGeocode(
+  lat: number,
+  lng: number
+): Promise<ReverseGeocodeResult> {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`
@@ -45,6 +57,8 @@ type TrackingContextValue = ReturnType<typeof useGPS> & {
   isTracking: boolean;
   startedAt: Date | null;
   maxSpeed: number;
+  isGpsReliable: boolean;
+  maxGpsAccuracyMeters: number;
   startTracking: () => void;
   stopTracking: () => Promise<void>;
   toggleTracking: () => void;
@@ -62,11 +76,17 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   const { settings, updateFuel } = useLocalSettings();
   const { addTrip } = useLocalTrips();
 
+  const isGpsReliable =
+    typeof gps.accuracy === "number" &&
+    gps.accuracy > 0 &&
+    gps.accuracy <= MAX_GPS_ACCURACY_METERS;
+
   useEffect(() => {
-    if (isTracking) {
-      setMaxSpeed((prev) => Math.max(prev, gps.speed));
-    }
-  }, [gps.speed, isTracking]);
+    if (!isTracking) return;
+    if (!isGpsReliable) return;
+
+    setMaxSpeed((prev) => Math.max(prev, gps.speed));
+  }, [gps.speed, gps.accuracy, isTracking, isGpsReliable]);
 
   const startTracking = () => {
     gps.resetDistance();
@@ -80,19 +100,34 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
     if (!settings || !startedAt) {
       setStartedAt(null);
+      setMaxSpeed(0);
+      gps.resetDistance();
+      return;
+    }
+
+    if (!isGpsReliable) {
+      console.warn(
+        `[GPS] Trajet non enregistré : précision insuffisante (${Math.round(
+          gps.accuracy ?? 9999
+        )} m)`
+      );
+
+      setStartedAt(null);
+      setMaxSpeed(0);
+      gps.resetDistance();
+      return;
+    }
+
+    if (gps.distance < MIN_TRIP_DISTANCE_KM) {
+      setStartedAt(null);
+      setMaxSpeed(0);
+      gps.resetDistance();
       return;
     }
 
     const endedAt = new Date();
     const durationMs = endedAt.getTime() - startedAt.getTime();
     const durationMinutes = Math.max(1, Math.round(durationMs / 60000));
-
-    if (gps.distance < 0.02) {
-      setStartedAt(null);
-      setMaxSpeed(0);
-      gps.resetDistance();
-      return;
-    }
 
     const durationHours = durationMinutes / 60;
     const avgSpeedKmh = durationHours > 0 ? gps.distance / durationHours : 0;
@@ -177,6 +212,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
   const resetRoute = () => {
     if (isTracking) return;
+
     gps.resetDistance();
     setStartedAt(null);
     setMaxSpeed(0);
@@ -189,6 +225,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         isTracking,
         startedAt,
         maxSpeed,
+        isGpsReliable,
+        maxGpsAccuracyMeters: MAX_GPS_ACCURACY_METERS,
         startTracking,
         stopTracking,
         toggleTracking,
