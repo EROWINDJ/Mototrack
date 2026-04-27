@@ -68,7 +68,6 @@ export default function Home() {
 
   const validateRealStart = () => {
     clearStartValidation();
-
     resetRoute();
 
     setIsWaitingForStart(false);
@@ -517,7 +516,7 @@ export default function Home() {
               style={styles.doneButton}
               onClick={() => setIsSettingsOpen(false)}
             >
-              Fermer
+              Valider et fermer
             </button>
           </div>
         </div>
@@ -876,13 +875,14 @@ const styles = {
   settingsPanel: {
     width: "100%",
     maxWidth: "520px",
-    maxHeight: "88vh",
+    maxHeight: "82vh",
     overflowY: "auto" as const,
     borderRadius: "24px",
     background: "#0f172a",
     border: "1px solid rgba(255,255,255,0.14)",
     boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
     padding: "18px",
+    paddingBottom: "96px",
   },
 
   settingsHeader: {
@@ -1094,13 +1094,19 @@ const styles = {
   },
 
   doneButton: {
+    position: "sticky" as const,
+    bottom: "0",
     width: "100%",
-    minHeight: "44px",
-    borderRadius: "14px",
+    minHeight: "52px",
+    borderRadius: "16px",
     border: "none",
     background: "#22c55e",
     color: "white",
     fontWeight: 900,
-    marginTop: "14px",
+    fontSize: "17px",
+    marginTop: "18px",
+    boxShadow:
+      "0 -12px 28px rgba(15,23,42,0.95), 0 14px 32px rgba(34,197,94,0.28)",
+    zIndex: 3,
   },
 };
