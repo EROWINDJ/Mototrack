@@ -20,10 +20,12 @@ import {
   Lock,
   Save,
   Unlock,
+  Upload,
 } from "lucide-react";
 import {
   getMotoTrackExportData,
   getVehicle,
+  importMotoTrackData,
   saveVehicle,
   type VehicleData,
 } from "@/lib/localDb";
@@ -43,12 +45,16 @@ export default function Vehicle() {
   const [isLocked, setIsLocked] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+
   const [scanError, setScanError] = useState<string | null>(null);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const carteGriseInputRef = useRef<HTMLInputElement | null>(null);
   const permisRectoInputRef = useRef<HTMLInputElement | null>(null);
   const permisVersoInputRef = useRef<HTMLInputElement | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -160,6 +166,7 @@ export default function Vehicle() {
   const handleExportData = async () => {
     setIsExporting(true);
     setExportMessage(null);
+    setImportMessage(null);
 
     try {
       const exportData = await getMotoTrackExportData();
@@ -188,6 +195,47 @@ export default function Vehicle() {
       setExportMessage("Export impossible pour le moment.");
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleImportData = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const confirmed = window.confirm(
+      "Importer ce fichier va restaurer les paramètres, le véhicule et les trajets contenus dans le JSON. Continuer ?"
+    );
+
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+
+    setIsImporting(true);
+    setImportMessage(null);
+    setExportMessage(null);
+
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      const result = await importMotoTrackData(json);
+
+      setImportMessage(
+        `Import terminé : ${result.tripsImported} trajet(s) restauré(s). Rechargement...`
+      );
+
+      setTimeout(() => {
+        window.location.reload();
+      }, 1200);
+    } catch (error) {
+      console.error("Erreur import JSON :", error);
+      setImportMessage(
+        "Import impossible. Vérifiez que le fichier est bien un export MotoTrack valide."
+      );
+    } finally {
+      setIsImporting(false);
+      event.target.value = "";
     }
   };
 
@@ -302,7 +350,29 @@ export default function Vehicle() {
         {isExporting ? "Export en cours..." : "Exporter mes données"}
       </button>
 
+      <button
+        style={styles.importButton}
+        disabled={isImporting}
+        onClick={() => importInputRef.current?.click()}
+      >
+        {isImporting ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <Upload size={18} />
+        )}
+        {isImporting ? "Import en cours..." : "Importer mes données"}
+      </button>
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={handleImportData}
+      />
+
       {exportMessage && <div style={styles.exportMessage}>{exportMessage}</div>}
+      {importMessage && <div style={styles.importMessage}>{importMessage}</div>}
 
       <section style={styles.card}>
         <div style={styles.cardHeader}>
@@ -924,7 +994,36 @@ const styles: Record<string, CSSProperties> = {
     margin: "0 auto 12px",
   },
 
+  importButton: {
+    width: "100%",
+    maxWidth: "720px",
+    height: "46px",
+    borderRadius: "14px",
+    border: "1px solid rgba(59,130,246,0.35)",
+    background: "rgba(59,130,246,0.14)",
+    color: "#bfdbfe",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    fontWeight: 800,
+    margin: "0 auto 12px",
+  },
+
   exportMessage: {
+    width: "100%",
+    maxWidth: "720px",
+    margin: "0 auto 12px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    background: "rgba(34,197,94,0.12)",
+    border: "1px solid rgba(34,197,94,0.25)",
+    color: "#bbf7d0",
+    fontSize: "13px",
+    textAlign: "center",
+  },
+
+  importMessage: {
     width: "100%",
     maxWidth: "720px",
     margin: "0 auto 18px",
@@ -932,7 +1031,7 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "12px",
     background: "rgba(59,130,246,0.12)",
     border: "1px solid rgba(59,130,246,0.25)",
-    color: "rgba(255,255,255,0.78)",
+    color: "#bfdbfe",
     fontSize: "13px",
     textAlign: "center",
   },

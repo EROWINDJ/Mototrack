@@ -100,6 +100,12 @@ export interface MotoTrackExportData {
   trips: LocalTrip[];
 }
 
+export interface MotoTrackImportResult {
+  settingsImported: boolean;
+  vehicleImported: boolean;
+  tripsImported: number;
+}
+
 interface MotoTrackDB extends DBSchema {
   trips: {
     key: string;
@@ -185,12 +191,12 @@ export async function deleteTrip(id: string): Promise<void> {
 }
 
 function buildShareText(trip: Omit<LocalTrip, "id" | "shareText">): string {
-  const dist = trip.distanceKm.toFixed(1);
-  const avg = trip.avgSpeedKmh.toFixed(0);
-  const max = trip.maxSpeedKmh.toFixed(0);
-  const conso = trip.consumptionRateL100.toFixed(1);
+  const dist = Number(trip.distanceKm || 0).toFixed(1);
+  const avg = Number(trip.avgSpeedKmh || 0).toFixed(0);
+  const max = Number(trip.maxSpeedKmh || 0).toFixed(0);
+  const conso = Number(trip.consumptionRateL100 || 0).toFixed(1);
 
-  const dur = trip.durationMinutes;
+  const dur = Number(trip.durationMinutes || 0);
   const h = Math.floor(dur / 60);
   const m = dur % 60;
   const durStr = h > 0 ? `${h}h${m.toString().padStart(2, "0")}` : `${m}min`;
@@ -365,5 +371,80 @@ export async function getMotoTrackExportData(): Promise<MotoTrackExportData> {
     settings,
     vehicle,
     trips,
+  };
+}
+
+// --- Import ---
+
+function isMotoTrackExportData(data: unknown): data is MotoTrackExportData {
+  if (!data || typeof data !== "object") return false;
+
+  const candidate = data as Partial<MotoTrackExportData>;
+
+  return (
+    candidate.app === "MotoTrack" &&
+    typeof candidate.exportVersion === "number" &&
+    !!candidate.settings &&
+    !!candidate.vehicle &&
+    Array.isArray(candidate.trips)
+  );
+}
+
+function normalizeImportedTrip(trip: LocalTrip): LocalTrip {
+  const normalizedTrip: LocalTrip = {
+    ...trip,
+    id: trip.id || crypto.randomUUID(),
+    distanceKm: Number(trip.distanceKm) || 0,
+    avgSpeedKmh: Number(trip.avgSpeedKmh) || 0,
+    maxSpeedKmh: Number(trip.maxSpeedKmh) || 0,
+    consumedFuelL: Number(trip.consumedFuelL) || 0,
+    consumptionRateL100: Number(trip.consumptionRateL100) || 0,
+    durationMinutes: Number(trip.durationMinutes) || 0,
+  };
+
+  return {
+    ...normalizedTrip,
+    shareText: normalizedTrip.shareText || buildShareText(normalizedTrip),
+  };
+}
+
+export async function importMotoTrackData(
+  data: unknown
+): Promise<MotoTrackImportResult> {
+  if (!isMotoTrackExportData(data)) {
+    throw new Error("Fichier d’export MotoTrack invalide.");
+  }
+
+  const db = await getDb();
+
+  const normalizedSettings = normalizeSettings({
+    ...DEFAULT_SETTINGS,
+    ...data.settings,
+    id: "default",
+  });
+
+  const normalizedVehicle: VehicleData = {
+    ...DEFAULT_VEHICLE,
+    ...data.vehicle,
+    id: "default",
+  };
+
+  await db.put("settings", normalizedSettings);
+  await db.put("vehicle", normalizedVehicle);
+
+  let tripsImported = 0;
+
+  for (const trip of data.trips) {
+    if (!trip || !trip.startedAt || !trip.endedAt) continue;
+
+    const normalizedTrip = normalizeImportedTrip(trip);
+    await db.put("trips", normalizedTrip);
+    tripsImported += 1;
+  }
+
+  return {
+    settingsImported: true,
+    vehicleImported: true,
+    tripsImported,
   };
 }
