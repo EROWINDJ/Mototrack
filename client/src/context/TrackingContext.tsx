@@ -9,6 +9,7 @@ import useGPS from "@/hooks/useGPS";
 import { useLeanAngle, type LeanAngleStats } from "@/hooks/useLeanAngle";
 import { useLocalSettings } from "@/hooks/useLocalSettings";
 import { useLocalTrips } from "@/hooks/useLocalTrips";
+import type { LeanCalibration } from "@/lib/localDb";
 
 const MAX_GPS_ACCURACY_METERS = 30;
 const MIN_TRIP_DISTANCE_KM = 0.02;
@@ -66,6 +67,8 @@ type TrackingContextValue = ReturnType<typeof useGPS> & {
   leanAngleStatus: string;
   leanAngleStats: LeanAngleStats;
   resetLeanAngleStats: () => void;
+  requestLeanAnglePermission: () => Promise<boolean>;
+  calibrateLeanAngleZero: () => Promise<LeanCalibration>;
 
   startTracking: () => void;
   stopTracking: () => Promise<void>;
@@ -81,13 +84,21 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   const [maxSpeed, setMaxSpeed] = useState(0);
 
   const gps = useGPS(isTracking);
-  const { settings, updateFuel } = useLocalSettings();
+  const { settings, updateFuel, updateSettingsNow } = useLocalSettings();
   const { addTrip } = useLocalTrips();
 
   const lean = useLeanAngle(
     isTracking,
     settings?.leanCalibration ? settings.leanCalibration : null,
-    gps.speed
+    gps.speed,
+    {
+      enabled: settings?.leanAngleEnabled ?? true,
+      maxAngle: settings?.leanMaxAngle ?? 75,
+      minDisplayAngle: settings?.leanMinDisplayAngle ?? 5,
+      minRecordedAngle: settings?.leanMinRecordedAngle ?? 20,
+      minSpeedKmh: settings?.leanMinSpeedKmh ?? 15,
+      smoothingFactor: settings?.leanSmoothingFactor ?? 0.1,
+    }
   );
 
   const isGpsReliable =
@@ -102,8 +113,32 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     setMaxSpeed((prev) => Math.max(prev, gps.speed));
   }, [gps.speed, gps.accuracy, isTracking, isGpsReliable]);
 
+  const requestLeanAnglePermission = async () => {
+    return lean.requestPermission();
+  };
+
+  const calibrateLeanAngleZero = async () => {
+    const granted = await lean.requestPermission();
+
+    if (!granted) {
+      throw new Error("Permission capteurs refusée");
+    }
+
+    const calibration = await lean.startCalibration();
+
+    await updateSettingsNow({
+      leanCalibration: calibration,
+    });
+
+    lean.resetStats();
+
+    return calibration;
+  };
+
   const startTracking = () => {
-    void lean.requestPermission();
+    if (settings?.leanAngleEnabled ?? true) {
+      void lean.requestPermission();
+    }
 
     gps.resetDistance();
     lean.resetStats();
@@ -257,6 +292,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         leanAngleStatus: lean.status,
         leanAngleStats: lean.stats,
         resetLeanAngleStats: lean.resetStats,
+        requestLeanAnglePermission,
+        calibrateLeanAngleZero,
 
         startTracking,
         stopTracking,

@@ -60,6 +60,8 @@ export interface LeanCalibration {
   calibratedAt: string;
 }
 
+export type LeanSmoothingMode = "soft" | "normal" | "sport";
+
 export interface LocalSettings {
   id: "default";
   tankSize: number;
@@ -70,7 +72,15 @@ export interface LocalSettings {
   motoBrand: string;
   reserveAlertEnabled: boolean;
   reserveThresholdKm: number;
+
   leanCalibration: LeanCalibration | null;
+  leanAngleEnabled: boolean;
+  leanMaxAngle: number;
+  leanMinDisplayAngle: number;
+  leanMinRecordedAngle: number;
+  leanMinSpeedKmh: number;
+  leanSmoothingMode: LeanSmoothingMode;
+  leanSmoothingFactor: number;
 }
 
 export interface VehicleData {
@@ -245,8 +255,30 @@ export const DEFAULT_SETTINGS: LocalSettings = {
   motoBrand: "",
   reserveAlertEnabled: true,
   reserveThresholdKm: 40,
+
   leanCalibration: null,
+  leanAngleEnabled: true,
+  leanMaxAngle: 75,
+  leanMinDisplayAngle: 5,
+  leanMinRecordedAngle: 20,
+  leanMinSpeedKmh: 15,
+  leanSmoothingMode: "soft",
+  leanSmoothingFactor: 0.1,
 };
+
+function smoothingFactorFromMode(mode: LeanSmoothingMode): number {
+  if (mode === "sport") return 0.2;
+  if (mode === "normal") return 0.12;
+  return 0.1;
+}
+
+function normalizeSmoothingMode(value: unknown): LeanSmoothingMode {
+  if (value === "sport" || value === "normal" || value === "soft") {
+    return value;
+  }
+
+  return "soft";
+}
 
 function normalizeSettings(settings: LocalSettings): LocalSettings {
   const tankSize = Math.max(0, Number(settings.tankSize) || 0);
@@ -260,6 +292,8 @@ function normalizeSettings(settings: LocalSettings): LocalSettings {
 
   currentFuelL = Math.min(Math.max(0, currentFuelL), tankSize);
 
+  const leanSmoothingMode = normalizeSmoothingMode(settings.leanSmoothingMode);
+
   return {
     ...settings,
     id: "default",
@@ -271,6 +305,38 @@ function normalizeSettings(settings: LocalSettings): LocalSettings {
       0,
       Number(settings.stopDurationForRefuelAlert) || 0
     ),
+
+    leanCalibration: settings.leanCalibration || null,
+    leanAngleEnabled: Boolean(settings.leanAngleEnabled ?? true),
+    leanMaxAngle: Math.min(
+      90,
+      Math.max(30, Number(settings.leanMaxAngle) || DEFAULT_SETTINGS.leanMaxAngle)
+    ),
+    leanMinDisplayAngle: Math.min(
+      30,
+      Math.max(
+        0,
+        Number(settings.leanMinDisplayAngle) ||
+          DEFAULT_SETTINGS.leanMinDisplayAngle
+      )
+    ),
+    leanMinRecordedAngle: Math.min(
+      60,
+      Math.max(
+        0,
+        Number(settings.leanMinRecordedAngle) ||
+          DEFAULT_SETTINGS.leanMinRecordedAngle
+      )
+    ),
+    leanMinSpeedKmh: Math.min(
+      80,
+      Math.max(
+        0,
+        Number(settings.leanMinSpeedKmh) || DEFAULT_SETTINGS.leanMinSpeedKmh
+      )
+    ),
+    leanSmoothingMode,
+    leanSmoothingFactor: smoothingFactorFromMode(leanSmoothingMode),
   };
 }
 
@@ -374,7 +440,7 @@ export async function getMotoTrackExportData(): Promise<MotoTrackExportData> {
 
   return {
     app: "MotoTrack",
-    exportVersion: 2,
+    exportVersion: 3,
     exportedAt: new Date().toISOString(),
     settings,
     vehicle,
@@ -469,6 +535,8 @@ export async function importMotoTrackData(
     await db.put("trips", normalizedTrip);
     tripsImported += 1;
   }
+
+  window.dispatchEvent(new Event("mototrack:settings-updated"));
 
   return {
     settingsImported: true,

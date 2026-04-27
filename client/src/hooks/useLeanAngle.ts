@@ -9,6 +9,7 @@ export interface CalibrationData {
 export type LeanAngleDirection = "left" | "right" | "neutral";
 
 export type LeanAngleStatus =
+  | "disabled"
   | "unavailable"
   | "needs-permission"
   | "ready"
@@ -28,37 +29,23 @@ export interface LeanAngleStats {
   sampleCountRight: number;
 }
 
-/**
- * Plafond technique.
- * 75° permet de couvrir un usage très sportif / piste amateur,
- * tout en évitant les valeurs totalement délirantes.
- */
-const MAX_LEAN_ANGLE = 75;
+export interface LeanAngleOptions {
+  enabled: boolean;
+  maxAngle: number;
+  minDisplayAngle: number;
+  minRecordedAngle: number;
+  minSpeedKmh: number;
+  smoothingFactor: number;
+}
 
-/**
- * Seuil d'affichage live.
- * En dessous de 5°, on considère que c'est neutre pour l'UI.
- */
-const MIN_DISPLAY_ANGLE = 5;
-
-/**
- * Seuil d'enregistrement dans les statistiques de trajet.
- * On ne veut pas polluer Moy G / Max G / Moy D / Max D avec des petits mouvements
- * ou des braquages de guidon à l'arrêt.
- */
-const MIN_RECORDED_ANGLE = 20;
-
-/**
- * Vitesse minimale pour enregistrer les stats d'angle.
- * À l'arrêt ou à très basse vitesse, le guidon peut créer de faux angles.
- */
-const MIN_SPEED_FOR_LEAN_STATS_KMH = 15;
-
-/**
- * Plus la valeur est basse, plus l'affichage est doux.
- * 0.10 = beaucoup plus stable que 0.25.
- */
-const SMOOTHING_FACTOR = 0.1;
+const DEFAULT_OPTIONS: LeanAngleOptions = {
+  enabled: true,
+  maxAngle: 75,
+  minDisplayAngle: 5,
+  minRecordedAngle: 20,
+  minSpeedKmh: 15,
+  smoothingFactor: 0.1,
+};
 
 const EMPTY_STATS: LeanAngleStats = {
   currentAngle: 0,
@@ -74,11 +61,39 @@ const EMPTY_STATS: LeanAngleStats = {
   sampleCountRight: 0,
 };
 
+function normalizeOptions(options?: Partial<LeanAngleOptions>): LeanAngleOptions {
+  const merged = {
+    ...DEFAULT_OPTIONS,
+    ...options,
+  };
+
+  return {
+    enabled: Boolean(merged.enabled),
+    maxAngle: Math.min(90, Math.max(30, Number(merged.maxAngle) || 75)),
+    minDisplayAngle: Math.min(
+      30,
+      Math.max(0, Number(merged.minDisplayAngle) || 5)
+    ),
+    minRecordedAngle: Math.min(
+      60,
+      Math.max(0, Number(merged.minRecordedAngle) || 20)
+    ),
+    minSpeedKmh: Math.min(80, Math.max(0, Number(merged.minSpeedKmh) || 15)),
+    smoothingFactor: Math.min(
+      0.35,
+      Math.max(0.03, Number(merged.smoothingFactor) || 0.1)
+    ),
+  };
+}
+
 export function useLeanAngle(
   isActive: boolean,
   calibration: CalibrationData | null,
-  speedKmh = 0
+  speedKmh = 0,
+  rawOptions?: Partial<LeanAngleOptions>
 ) {
+  const options = normalizeOptions(rawOptions);
+
   const [leanAngle, setLeanAngle] = useState(0);
   const [status, setStatus] = useState<LeanAngleStatus>("unavailable");
   const [stats, setStats] = useState<LeanAngleStats>(EMPTY_STATS);
@@ -194,6 +209,12 @@ export function useLeanAngle(
   }, []);
 
   useEffect(() => {
+    if (!options.enabled) {
+      setStatus("disabled");
+      resetStats();
+      return;
+    }
+
     if (!("DeviceOrientationEvent" in window)) {
       setStatus("unavailable");
       return;
@@ -226,13 +247,13 @@ export function useLeanAngle(
       const correctedAngle = event.gamma - offsetGamma;
 
       const clampedAngle = Math.max(
-        -MAX_LEAN_ANGLE,
-        Math.min(MAX_LEAN_ANGLE, correctedAngle)
+        -options.maxAngle,
+        Math.min(options.maxAngle, correctedAngle)
       );
 
       const smoothedAngle =
-        smoothedAngleRef.current * (1 - SMOOTHING_FACTOR) +
-        clampedAngle * SMOOTHING_FACTOR;
+        smoothedAngleRef.current * (1 - options.smoothingFactor) +
+        clampedAngle * options.smoothingFactor;
 
       smoothedAngleRef.current = smoothedAngle;
 
@@ -241,15 +262,14 @@ export function useLeanAngle(
 
       let direction: LeanAngleDirection = "neutral";
 
-      if (roundedAngle <= -MIN_DISPLAY_ANGLE) {
+      if (roundedAngle <= -options.minDisplayAngle) {
         direction = "left";
-      } else if (roundedAngle >= MIN_DISPLAY_ANGLE) {
+      } else if (roundedAngle >= options.minDisplayAngle) {
         direction = "right";
       }
 
       const shouldRecordLeanStats =
-        speedKmh >= MIN_SPEED_FOR_LEAN_STATS_KMH &&
-        absAngle >= MIN_RECORDED_ANGLE;
+        speedKmh >= options.minSpeedKmh && absAngle >= options.minRecordedAngle;
 
       if (shouldRecordLeanStats && direction === "left") {
         sumLeftRef.current += absAngle;
@@ -295,7 +315,18 @@ export function useLeanAngle(
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
     };
-  }, [isActive, calibration, speedKmh, resetStats]);
+  }, [
+    isActive,
+    calibration,
+    speedKmh,
+    options.enabled,
+    options.maxAngle,
+    options.minDisplayAngle,
+    options.minRecordedAngle,
+    options.minSpeedKmh,
+    options.smoothingFactor,
+    resetStats,
+  ]);
 
   return {
     leanAngle,
