@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Bike,
   Camera,
+  Download,
   Droplet,
   Fuel,
   Gauge,
@@ -20,7 +21,12 @@ import {
   Save,
   Unlock,
 } from "lucide-react";
-import { getVehicle, saveVehicle, type VehicleData } from "@/lib/localDb";
+import {
+  getMotoTrackExportData,
+  getVehicle,
+  saveVehicle,
+  type VehicleData,
+} from "@/lib/localDb";
 import { useLocalSettings } from "@/hooks/useLocalSettings";
 
 type VehicleImageField =
@@ -36,7 +42,9 @@ export default function Vehicle() {
   const [vehicle, setVehicle] = useState<VehicleData | null>(null);
   const [isLocked, setIsLocked] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   const carteGriseInputRef = useRef<HTMLInputElement | null>(null);
   const permisRectoInputRef = useRef<HTMLInputElement | null>(null);
@@ -149,6 +157,40 @@ export default function Vehicle() {
     updateFuel(settings.tankSize);
   };
 
+  const handleExportData = async () => {
+    setIsExporting(true);
+    setExportMessage(null);
+
+    try {
+      const exportData = await getMotoTrackExportData();
+      const json = JSON.stringify(exportData, null, 2);
+
+      const blob = new Blob([json], {
+        type: "application/json;charset=utf-8",
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      const date = new Date().toISOString().slice(0, 10);
+
+      link.href = url;
+      link.download = `mototrack-export-${date}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      URL.revokeObjectURL(url);
+
+      setExportMessage("Export JSON généré.");
+    } catch (error) {
+      console.error("Erreur export JSON :", error);
+      setExportMessage("Export impossible pour le moment.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleCarteGriseUpload = async (
     event: ChangeEvent<HTMLInputElement>
   ) => {
@@ -246,6 +288,21 @@ export default function Vehicle() {
         {isLocked ? "Déverrouiller les données" : "Verrouiller et sauvegarder"}
         {!isLocked && <Save size={18} />}
       </button>
+
+      <button
+        style={styles.exportButton}
+        disabled={isExporting}
+        onClick={handleExportData}
+      >
+        {isExporting ? (
+          <Loader2 size={18} className="animate-spin" />
+        ) : (
+          <Download size={18} />
+        )}
+        {isExporting ? "Export en cours..." : "Exporter mes données"}
+      </button>
+
+      {exportMessage && <div style={styles.exportMessage}>{exportMessage}</div>}
 
       <section style={styles.card}>
         <div style={styles.cardHeader}>
@@ -367,7 +424,7 @@ export default function Vehicle() {
             ) : (
               <Camera size={18} />
             )}
-            {isScanning ? "Analyse..." : "Photo"}
+            {isScanning ? "Analyse..." : "Scanner"}
           </button>
         </div>
 
@@ -848,7 +905,36 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "center",
     gap: "10px",
     fontWeight: 700,
+    margin: "0 auto 12px",
+  },
+
+  exportButton: {
+    width: "100%",
+    maxWidth: "720px",
+    height: "46px",
+    borderRadius: "14px",
+    border: "1px solid rgba(34,197,94,0.35)",
+    background: "rgba(34,197,94,0.14)",
+    color: "#bbf7d0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "10px",
+    fontWeight: 800,
+    margin: "0 auto 12px",
+  },
+
+  exportMessage: {
+    width: "100%",
+    maxWidth: "720px",
     margin: "0 auto 18px",
+    padding: "10px 12px",
+    borderRadius: "12px",
+    background: "rgba(59,130,246,0.12)",
+    border: "1px solid rgba(59,130,246,0.25)",
+    color: "rgba(255,255,255,0.78)",
+    fontSize: "13px",
+    textAlign: "center",
   },
 
   card: {

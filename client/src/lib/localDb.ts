@@ -91,6 +91,15 @@ export interface VehicleData {
   permisVersoImage?: string;
 }
 
+export interface MotoTrackExportData {
+  app: "MotoTrack";
+  exportVersion: number;
+  exportedAt: string;
+  settings: LocalSettings;
+  vehicle: VehicleData;
+  trips: LocalTrip[];
+}
+
 interface MotoTrackDB extends DBSchema {
   trips: {
     key: string;
@@ -338,4 +347,23 @@ export async function saveVehicle(
 
   await db.put("vehicle", updated);
   return updated;
+}
+
+// --- Export ---
+
+export async function getMotoTrackExportData(): Promise<MotoTrackExportData> {
+  const [settings, vehicle, trips] = await Promise.all([
+    getSettings(),
+    getVehicle(),
+    getAllTrips(),
+  ]);
+
+  return {
+    app: "MotoTrack",
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    settings,
+    vehicle,
+    trips,
+  };
 }
