@@ -86,7 +86,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
   const lean = useLeanAngle(
     isTracking,
-    settings?.leanCalibration ? settings.leanCalibration : null
+    settings?.leanCalibration ? settings.leanCalibration : null,
+    gps.speed
   );
 
   const isGpsReliable =

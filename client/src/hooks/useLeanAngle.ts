@@ -28,9 +28,37 @@ export interface LeanAngleStats {
   sampleCountRight: number;
 }
 
+/**
+ * Plafond technique.
+ * 75° permet de couvrir un usage très sportif / piste amateur,
+ * tout en évitant les valeurs totalement délirantes.
+ */
 const MAX_LEAN_ANGLE = 75;
-const MIN_RECORDED_ANGLE = 2;
-const SMOOTHING_FACTOR = 0.25;
+
+/**
+ * Seuil d'affichage live.
+ * En dessous de 5°, on considère que c'est neutre pour l'UI.
+ */
+const MIN_DISPLAY_ANGLE = 5;
+
+/**
+ * Seuil d'enregistrement dans les statistiques de trajet.
+ * On ne veut pas polluer Moy G / Max G / Moy D / Max D avec des petits mouvements
+ * ou des braquages de guidon à l'arrêt.
+ */
+const MIN_RECORDED_ANGLE = 20;
+
+/**
+ * Vitesse minimale pour enregistrer les stats d'angle.
+ * À l'arrêt ou à très basse vitesse, le guidon peut créer de faux angles.
+ */
+const MIN_SPEED_FOR_LEAN_STATS_KMH = 15;
+
+/**
+ * Plus la valeur est basse, plus l'affichage est doux.
+ * 0.10 = beaucoup plus stable que 0.25.
+ */
+const SMOOTHING_FACTOR = 0.1;
 
 const EMPTY_STATS: LeanAngleStats = {
   currentAngle: 0,
@@ -48,7 +76,8 @@ const EMPTY_STATS: LeanAngleStats = {
 
 export function useLeanAngle(
   isActive: boolean,
-  calibration: CalibrationData | null
+  calibration: CalibrationData | null,
+  speedKmh = 0
 ) {
   const [leanAngle, setLeanAngle] = useState(0);
   const [status, setStatus] = useState<LeanAngleStatus>("unavailable");
@@ -212,19 +241,23 @@ export function useLeanAngle(
 
       let direction: LeanAngleDirection = "neutral";
 
-      if (roundedAngle <= -MIN_RECORDED_ANGLE) {
+      if (roundedAngle <= -MIN_DISPLAY_ANGLE) {
         direction = "left";
-      } else if (roundedAngle >= MIN_RECORDED_ANGLE) {
+      } else if (roundedAngle >= MIN_DISPLAY_ANGLE) {
         direction = "right";
       }
 
-      if (direction === "left") {
+      const shouldRecordLeanStats =
+        speedKmh >= MIN_SPEED_FOR_LEAN_STATS_KMH &&
+        absAngle >= MIN_RECORDED_ANGLE;
+
+      if (shouldRecordLeanStats && direction === "left") {
         sumLeftRef.current += absAngle;
         countLeftRef.current += 1;
         maxLeftRef.current = Math.max(maxLeftRef.current, absAngle);
       }
 
-      if (direction === "right") {
+      if (shouldRecordLeanStats && direction === "right") {
         sumRightRef.current += absAngle;
         countRightRef.current += 1;
         maxRightRef.current = Math.max(maxRightRef.current, absAngle);
@@ -262,7 +295,7 @@ export function useLeanAngle(
     return () => {
       window.removeEventListener("deviceorientation", handleOrientation);
     };
-  }, [isActive, calibration, resetStats]);
+  }, [isActive, calibration, speedKmh, resetStats]);
 
   return {
     leanAngle,
