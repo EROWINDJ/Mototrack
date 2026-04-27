@@ -27,7 +27,6 @@ export interface LocalTrip {
 
   durationMinutes: number;
 
-  // 🔥 AJOUT
   autonomyBeforeKm?: number;
   autonomyAfterKm?: number;
 
@@ -69,6 +68,7 @@ export interface LocalSettings {
 
 export interface VehicleData {
   id: "default";
+
   immatriculation: string;
   marque: string;
   modele: string;
@@ -78,9 +78,17 @@ export interface VehicleData {
   cylindree: string;
   poids: string;
   typeVehicule: string;
+
   carteGriseImage?: string;
+
+  /**
+   * Ancien champ conservé pour compatibilité.
+   * Avant, le permis était stocké dans permisImage.
+   * Maintenant, on privilégie permisRectoImage / permisVersoImage.
+   */
+  permisImage?: string;
   permisRectoImage?: string;
-permisVersoImage?: string;
+  permisVersoImage?: string;
 }
 
 interface MotoTrackDB extends DBSchema {
@@ -184,7 +192,9 @@ function buildShareText(trip: Omit<LocalTrip, "id" | "shareText">): string {
   let text = `🏍️ Trajet MotoTrack\n📍 ${dist} km en ${durStr}\n⚡ Vitesse moy. ${avg} km/h | max ${max} km/h`;
 
   if (start || end) {
-    text += `\n🟢 Départ : ${start || "non précisé"}\n🔴 Arrivée : ${end || "non précisée"}`;
+    text += `\n🟢 Départ : ${start || "non précisé"}\n🔴 Arrivée : ${
+      end || "non précisée"
+    }`;
   }
 
   if (trip.maxLeanAngle && trip.maxLeanAngle > 3) {
@@ -281,6 +291,7 @@ export async function saveSettings(
 
 const DEFAULT_VEHICLE: VehicleData = {
   id: "default",
+
   immatriculation: "",
   marque: "",
   modele: "",
@@ -290,8 +301,11 @@ const DEFAULT_VEHICLE: VehicleData = {
   cylindree: "",
   poids: "",
   typeVehicule: "",
+
   carteGriseImage: undefined,
   permisImage: undefined,
+  permisRectoImage: undefined,
+  permisVersoImage: undefined,
 };
 
 export async function getVehicle(): Promise<VehicleData> {

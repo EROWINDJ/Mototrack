@@ -12,7 +12,6 @@ import {
   Bike,
   Camera,
   Droplet,
-  FileText,
   Fuel,
   Gauge,
   IdCard,
@@ -24,16 +23,8 @@ import {
 import { getVehicle, saveVehicle, type VehicleData } from "@/lib/localDb";
 import { useLocalSettings } from "@/hooks/useLocalSettings";
 
-type ExtendedVehicleData = VehicleData & {
-  carteGriseImage?: string;
-  permisImage?: string;
-  permisRectoImage?: string;
-  permisVersoImage?: string;
-};
-
 type VehicleImageField =
   | "carteGriseImage"
-  | "permisImage"
   | "permisRectoImage"
   | "permisVersoImage";
 
@@ -42,7 +33,7 @@ const OCR_ENABLED_FOR_CARTE_GRISE = true;
 export default function Vehicle() {
   const { settings, loading, updateSettings, updateFuel } = useLocalSettings();
 
-  const [vehicle, setVehicle] = useState<ExtendedVehicleData | null>(null);
+  const [vehicle, setVehicle] = useState<VehicleData | null>(null);
   const [isLocked, setIsLocked] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -54,7 +45,7 @@ export default function Vehicle() {
 
   useEffect(() => {
     getVehicle().then((data) => {
-      setVehicle(data as ExtendedVehicleData);
+      setVehicle(data);
     });
 
     return () => {
@@ -81,7 +72,14 @@ export default function Vehicle() {
   }, [settings]);
 
   const updateVehicleField = (
-    field: keyof Omit<VehicleData, "id">,
+    field: keyof Omit<
+      VehicleData,
+      | "id"
+      | "carteGriseImage"
+      | "permisImage"
+      | "permisRectoImage"
+      | "permisVersoImage"
+    >,
     value: string
   ) => {
     setVehicle((previous) => {
@@ -92,7 +90,7 @@ export default function Vehicle() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     saveTimer.current = setTimeout(() => {
-      saveVehicle({ [field]: value } as Partial<VehicleData>);
+      saveVehicle({ [field]: value });
     }, 400);
   };
 
@@ -100,27 +98,16 @@ export default function Vehicle() {
     field: VehicleImageField,
     base64: string
   ) => {
-    await saveVehicle({ [field]: base64 } as Partial<VehicleData>);
+    const partial: Partial<Omit<VehicleData, "id">> = {
+      [field]: base64,
+    };
 
-    setVehicle((previous) => {
-      if (!previous) return previous;
+    if (field === "permisRectoImage") {
+      partial.permisImage = base64;
+    }
 
-      const next = {
-        ...previous,
-        [field]: base64,
-      };
-
-      /**
-       * Compatibilité avec l’ancien stockage :
-       * avant, le permis était stocké dans permisImage.
-       * Maintenant, on privilégie permisRectoImage / permisVersoImage.
-       */
-      if (field === "permisRectoImage") {
-        next.permisImage = base64;
-      }
-
-      return next;
-    });
+    const updated = await saveVehicle(partial);
+    setVehicle(updated);
   };
 
   const handleToggleLock = async () => {
@@ -128,7 +115,8 @@ export default function Vehicle() {
 
     if (!isLocked) {
       const { id, ...data } = vehicle;
-      await saveVehicle(data as Partial<VehicleData>);
+      const updated = await saveVehicle(data);
+      setVehicle(updated);
     }
 
     setIsLocked((previous) => !previous);
@@ -183,20 +171,17 @@ export default function Vehicle() {
       await worker.terminate();
 
       const extracted = parseCarteGrise(data.text);
-      const updates = {
+
+      const updated = await saveVehicle({
         ...extracted,
         carteGriseImage: base64,
-      };
+      });
 
-      await saveVehicle(updates as Partial<VehicleData>);
-
-      setVehicle((previous) =>
-        previous ? { ...previous, ...updates } : previous
-      );
+      setVehicle(updated);
     } catch (error) {
       console.error("Erreur OCR :", error);
       setScanError(
-        "Scan non exploitable. La photo est enregistrée, vous pouvez compléter les données manuellement."
+        "Lecture OCR non exploitable. La photo est enregistrée, vous pouvez compléter les données manuellement."
       );
     } finally {
       setIsScanning(false);
@@ -293,7 +278,6 @@ export default function Vehicle() {
             unit="L"
             disabled={isLocked}
             icon={<Droplet size={16} />}
-            step={0.1}
             decimals={1}
             onChange={handleTankSizeChange}
           />
@@ -304,7 +288,6 @@ export default function Vehicle() {
             unit="L"
             disabled={isLocked}
             icon={<Fuel size={16} />}
-            step={0.1}
             decimals={1}
             onChange={handleCurrentFuelChange}
           />
@@ -316,7 +299,6 @@ export default function Vehicle() {
           unit="L/100"
           disabled={isLocked}
           icon={<Gauge size={16} />}
-          step={0.1}
           decimals={1}
           onChange={handleConsumptionChange}
         />
@@ -371,7 +353,7 @@ export default function Vehicle() {
           <div>
             <h2 style={styles.cardTitle}>Carte grise</h2>
             <p style={styles.cardText}>
-              Photo du document avec OCR expérimental
+              Photo du document avec lecture OCR expérimentale
             </p>
           </div>
 
@@ -385,7 +367,7 @@ export default function Vehicle() {
             ) : (
               <Camera size={18} />
             )}
-            {isScanning ? "Analyse..." : "Scanner"}
+            {isScanning ? "Analyse..." : "Photo"}
           </button>
         </div>
 
@@ -484,29 +466,20 @@ export default function Vehicle() {
       <section style={styles.card}>
         <div style={styles.cardHeader}>
           <div>
-            <h2 style={styles.cardTitle}>Documents</h2>
+            <h2 style={styles.cardTitle}>Permis de conduire</h2>
             <p style={styles.cardText}>
-              Photos stockées localement sur ce téléphone
+              Photos recto / verso stockées localement sur ce téléphone
             </p>
           </div>
         </div>
 
         <div style={styles.documentInfo}>
-          Pour le moment, MotoTrack utilise l’appareil photo du téléphone. Ce
-          n’est pas encore un scan intelligent avec recadrage automatique, mais
-          la structure est prête pour l’ajouter ensuite.
+          Les documents sont enregistrés localement sous forme de photos. Le
+          scan intelligent avec recadrage automatique pourra être ajouté plus
+          tard.
         </div>
 
         <div style={styles.grid2}>
-          <DocumentBlock
-            title="Carte grise"
-            subtitle="Photo principale"
-            icon={<FileText size={18} />}
-            image={vehicle.carteGriseImage}
-            disabled={isLocked}
-            onClick={() => carteGriseInputRef.current?.click()}
-          />
-
           <DocumentBlock
             title="Permis recto"
             subtitle="Face avant"
@@ -586,7 +559,6 @@ function FieldNumber({
   unit,
   icon,
   disabled,
-  step = 1,
   decimals = 0,
   onChange,
 }: {
@@ -595,11 +567,35 @@ function FieldNumber({
   unit: string;
   icon: ReactNode;
   disabled: boolean;
-  step?: number;
   decimals?: number;
   onChange: (value: number) => void;
 }) {
   const safeValue = normalizeNumber(value);
+  const [draftValue, setDraftValue] = useState(
+    formatDecimal(safeValue, decimals)
+  );
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftValue(formatDecimal(safeValue, decimals));
+    }
+  }, [safeValue, decimals, disabled, isEditing]);
+
+  const handleChange = (rawValue: string) => {
+    const cleaned = cleanDecimalInput(rawValue);
+    setDraftValue(cleaned);
+
+    const parsed = parseDecimalInput(cleaned);
+    onChange(parsed);
+  };
+
+  const handleBlur = () => {
+    const parsed = parseDecimalInput(draftValue);
+    setDraftValue(formatDecimal(parsed, decimals));
+    setIsEditing(false);
+    onChange(parsed);
+  };
 
   return (
     <label style={styles.field}>
@@ -614,13 +610,13 @@ function FieldNumber({
           </div>
         ) : (
           <input
-            type="number"
-            value={Number.isFinite(safeValue) ? safeValue : 0}
-            step={step}
-            min={0}
+            type="text"
+            value={draftValue}
             inputMode="decimal"
             disabled={disabled}
-            onChange={(e) => onChange(parseDecimalInput(e.target.value))}
+            onFocus={() => setIsEditing(true)}
+            onChange={(e) => handleChange(e.target.value)}
+            onBlur={handleBlur}
             style={{ ...styles.input, paddingLeft: 36 }}
           />
         )}
@@ -692,8 +688,8 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function parseCarteGrise(text: string): Partial<VehicleData> {
-  const result: Partial<VehicleData> = {};
+function parseCarteGrise(text: string): Partial<Omit<VehicleData, "id">> {
+  const result: Partial<Omit<VehicleData, "id">> = {};
   const lines = text.toUpperCase();
 
   const immatMatch = lines.match(/([A-Z]{2}[\s-]*\d{3}[\s-]*[A-Z]{2})/);
@@ -738,7 +734,7 @@ function parseCarteGrise(text: string): Partial<VehicleData> {
     result.miseEnCirculation = dateMatch[1];
   }
 
-  const cylMatch = lines.match(/(\d{2,4})\s*(?:CM3|CC|CM²)/);
+  const cylMatch = lines.match(/(\d{2,4})\s*(?:CM3|CC|CM²|CM³)/);
   if (cylMatch) {
     result.cylindree = cylMatch[1];
   }
@@ -754,6 +750,28 @@ function parseCarteGrise(text: string): Partial<VehicleData> {
 function normalizeNumber(value: number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function cleanDecimalInput(value: string) {
+  let cleaned = value.replace(".", ",");
+
+  cleaned = cleaned.replace(/[^\d,]/g, "");
+
+  const parts = cleaned.split(",");
+  const integerPartRaw = parts[0] ?? "";
+  const decimalPart = parts[1] ?? "";
+
+  let integerPart = integerPartRaw.replace(/^0+(?=\d)/, "");
+
+  if (integerPart === "") {
+    integerPart = "0";
+  }
+
+  if (parts.length > 1) {
+    return `${integerPart},${decimalPart.slice(0, 1)}`;
+  }
+
+  return integerPart;
 }
 
 function parseDecimalInput(value: string) {
