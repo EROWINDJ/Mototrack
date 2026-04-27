@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useLocalTrips } from "@/hooks/useLocalTrips";
 import {
   BarChart,
@@ -65,6 +65,47 @@ export default function Statistics() {
     const realConsumption =
       totalDistance > 0 ? (totalFuel / totalDistance) * 100 : 0;
 
+    const tripsWithLeanLeft = filteredTrips.filter(
+      (trip) => (trip.leanAngleSampleCountLeft || 0) > 0
+    );
+
+    const tripsWithLeanRight = filteredTrips.filter(
+      (trip) => (trip.leanAngleSampleCountRight || 0) > 0
+    );
+
+    const avgLeanLeft =
+      tripsWithLeanLeft.length > 0
+        ? tripsWithLeanLeft.reduce(
+            (sum, trip) => sum + (trip.leanAngleAvgLeft || 0),
+            0
+          ) / tripsWithLeanLeft.length
+        : 0;
+
+    const avgLeanRight =
+      tripsWithLeanRight.length > 0
+        ? tripsWithLeanRight.reduce(
+            (sum, trip) => sum + (trip.leanAngleAvgRight || 0),
+            0
+          ) / tripsWithLeanRight.length
+        : 0;
+
+    const maxLeanLeft = filteredTrips.reduce(
+      (max, trip) => Math.max(max, trip.leanAngleMaxLeft || 0),
+      0
+    );
+
+    const maxLeanRight = filteredTrips.reduce(
+      (max, trip) => Math.max(max, trip.leanAngleMaxRight || 0),
+      0
+    );
+
+    const maxLean = Math.max(maxLeanLeft, maxLeanRight);
+
+    const totalGpsPoints = filteredTrips.reduce(
+      (sum, trip) => sum + (trip.path?.length ?? 0),
+      0
+    );
+
     return {
       totalDistance,
       totalFuel,
@@ -73,6 +114,13 @@ export default function Statistics() {
       avgSpeed,
       realConsumption,
       tripCount: filteredTrips.length,
+
+      avgLeanLeft,
+      avgLeanRight,
+      maxLeanLeft,
+      maxLeanRight,
+      maxLean,
+      totalGpsPoints,
     };
   }, [filteredTrips]);
 
@@ -91,6 +139,11 @@ export default function Statistics() {
         distance: Number((trip.distanceKm || 0).toFixed(2)),
         vitesse: Number((trip.avgSpeedKmh || 0).toFixed(0)),
         conso: Number((trip.consumptionRateL100 || 0).toFixed(1)),
+        angleMoyG: Number((trip.leanAngleAvgLeft || 0).toFixed(1)),
+        angleMoyD: Number((trip.leanAngleAvgRight || 0).toFixed(1)),
+        angleMaxG: Number((trip.leanAngleMaxLeft || 0).toFixed(1)),
+        angleMaxD: Number((trip.leanAngleMaxRight || 0).toFixed(1)),
+        gpsPoints: trip.path?.length ?? 0,
       }));
   }, [filteredTrips]);
 
@@ -135,6 +188,12 @@ export default function Statistics() {
           label="Conso réelle"
           value={`${stats.realConsumption.toFixed(2)} L/100`}
         />
+        <StatCard label="Angle moy G" value={`${stats.avgLeanLeft.toFixed(1)}°`} />
+        <StatCard label="Angle moy D" value={`${stats.avgLeanRight.toFixed(1)}°`} />
+        <StatCard label="Angle max G" value={`${stats.maxLeanLeft.toFixed(1)}°`} />
+        <StatCard label="Angle max D" value={`${stats.maxLeanRight.toFixed(1)}°`} />
+        <StatCard label="Badge angle" value={getLeanAngleBadge(stats.maxLean)} />
+        <StatCard label="Points GPS" value={stats.totalGpsPoints} />
       </div>
 
       {chartData.length === 0 ? (
@@ -193,6 +252,58 @@ export default function Statistics() {
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
+
+          <ChartCard title="Lean angle moyen gauche / droite">
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.55)" />
+                <YAxis stroke="rgba(255,255,255,0.55)" />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Line
+                  type="monotone"
+                  dataKey="angleMoyG"
+                  stroke="#60a5fa"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                  name="Moy G"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="angleMoyD"
+                  stroke="#f472b6"
+                  strokeWidth={3}
+                  dot={{ r: 4 }}
+                  name="Moy D"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Lean angle maximum gauche / droite">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.55)" />
+                <YAxis stroke="rgba(255,255,255,0.55)" />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="angleMaxG" fill="#60a5fa" radius={[8, 8, 0, 0]} name="Max G" />
+                <Bar dataKey="angleMaxD" fill="#f472b6" radius={[8, 8, 0, 0]} name="Max D" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Points GPS par trajet">
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="name" stroke="rgba(255,255,255,0.55)" />
+                <YAxis stroke="rgba(255,255,255,0.55)" />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="gpsPoints" fill="#a855f7" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
         </>
       )}
     </div>
@@ -213,7 +324,7 @@ function ChartCard({
   children,
 }: {
   title: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div style={styles.chartCard}>
@@ -221,6 +332,14 @@ function ChartCard({
       {children}
     </div>
   );
+}
+
+function getLeanAngleBadge(maxAngle: number) {
+  if (maxAngle >= 65) return "Respect. Tu cherchais tes lunettes ?";
+  if (maxAngle >= 55) return "Genou pas loin";
+  if (maxAngle >= 40) return "Belle mise sur l’angle";
+  if (maxAngle >= 25) return "Ça commence à jouer";
+  return "Balade tranquille";
 }
 
 const tooltipStyle = {

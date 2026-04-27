@@ -139,45 +139,44 @@ export default function Home() {
   };
 
   const displayedLeanAngle = Math.abs(Math.round(leanAngle));
-  const leanDirectionLabel =
-    leanAngleStats.direction === "left"
-      ? "Gauche"
-      : leanAngleStats.direction === "right"
-      ? "Droite"
-      : "Neutre";
+  const direction = leanAngleStats.direction;
+
+  const directionArrow =
+    direction === "left" ? "↖" : direction === "right" ? "↗" : "↑";
+
+  const directionLabel =
+    direction === "left"
+      ? "Inclinaison gauche"
+      : direction === "right"
+      ? "Inclinaison droite"
+      : "Position neutre";
 
   return (
     <div style={styles.container}>
-      <div style={styles.leanCard}>
-        <div style={styles.leanTopLine}>
-          <span style={styles.leanLabel}>Lean angle</span>
-          <span style={styles.leanStatus}>{leanAngleStatus}</span>
+      <div style={styles.leanInlineCard}>
+        <div style={styles.leanHeaderRow}>
+          <span style={styles.leanSmallLabel}>Lean angle</span>
+          <span style={styles.leanSmallStatus}>{leanAngleStatus}</span>
         </div>
 
-        <div style={styles.leanMain}>
-          <span style={styles.leanValue}>{displayedLeanAngle}°</span>
-          <span style={styles.leanDirection}>{leanDirectionLabel}</span>
-        </div>
-
-        <div style={styles.leanStatsGrid}>
-          <div style={styles.leanStat}>
-            <span style={styles.leanStatLabel}>Moy. G</span>
-            <strong>{leanAngleStats.avgLeft.toFixed(1)}°</strong>
+        <div style={styles.leanInlineContent}>
+          <div
+            style={{
+              ...styles.leanArrowBadge,
+              transform:
+                direction === "left"
+                  ? "rotate(-18deg)"
+                  : direction === "right"
+                  ? "rotate(18deg)"
+                  : "rotate(0deg)",
+            }}
+          >
+            {directionArrow}
           </div>
 
-          <div style={styles.leanStat}>
-            <span style={styles.leanStatLabel}>Max G</span>
-            <strong>{leanAngleStats.maxLeft.toFixed(1)}°</strong>
-          </div>
-
-          <div style={styles.leanStat}>
-            <span style={styles.leanStatLabel}>Moy. D</span>
-            <strong>{leanAngleStats.avgRight.toFixed(1)}°</strong>
-          </div>
-
-          <div style={styles.leanStat}>
-            <span style={styles.leanStatLabel}>Max D</span>
-            <strong>{leanAngleStats.maxRight.toFixed(1)}°</strong>
+          <div style={styles.leanInlineTextBlock}>
+            <div style={styles.leanInlineValue}>{displayedLeanAngle}°</div>
+            <div style={styles.leanInlineLabel}>{directionLabel}</div>
           </div>
         </div>
       </div>
@@ -279,73 +278,73 @@ const styles = {
     paddingBottom: "96px",
   },
 
-  leanCard: {
+  leanInlineCard: {
     width: "100%",
-    maxWidth: "360px",
-    padding: "14px",
+    maxWidth: "340px",
+    padding: "14px 16px",
     borderRadius: "18px",
-    background: "rgba(59, 130, 246, 0.12)",
-    border: "1px solid rgba(59, 130, 246, 0.28)",
+    background: "rgba(59, 130, 246, 0.10)",
+    border: "1px solid rgba(59, 130, 246, 0.22)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
   },
 
-  leanTopLine: {
+  leanHeaderRow: {
     display: "flex",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: "8px",
-  },
-
-  leanLabel: {
-    fontSize: "13px",
-    opacity: 0.72,
-    fontWeight: 700,
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.06em",
-  },
-
-  leanStatus: {
-    fontSize: "12px",
-    opacity: 0.65,
-  },
-
-  leanMain: {
-    display: "flex",
-    alignItems: "baseline",
-    justifyContent: "center",
-    gap: "10px",
+    justifyContent: "space-between",
     marginBottom: "12px",
   },
 
-  leanValue: {
-    fontSize: "42px",
-    fontWeight: 900,
-  },
-
-  leanDirection: {
-    fontSize: "15px",
-    opacity: 0.78,
-    fontWeight: 700,
-  },
-
-  leanStatsGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(4, 1fr)",
-    gap: "8px",
-  },
-
-  leanStat: {
-    padding: "8px 6px",
-    borderRadius: "12px",
-    background: "rgba(255,255,255,0.08)",
-    textAlign: "center" as const,
+  leanSmallLabel: {
     fontSize: "12px",
+    fontWeight: 800,
+    letterSpacing: "0.08em",
+    textTransform: "uppercase" as const,
+    opacity: 0.75,
   },
 
-  leanStatLabel: {
-    display: "block",
-    opacity: 0.55,
-    fontSize: "10px",
-    marginBottom: "3px",
+  leanSmallStatus: {
+    fontSize: "12px",
+    opacity: 0.62,
+  },
+
+  leanInlineContent: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "14px",
+  },
+
+  leanArrowBadge: {
+    width: "58px",
+    height: "58px",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "30px",
+    fontWeight: 800,
+    transition: "transform 0.18s ease",
+  },
+
+  leanInlineTextBlock: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "flex-start",
+  },
+
+  leanInlineValue: {
+    fontSize: "34px",
+    fontWeight: 900,
+    lineHeight: 1,
+  },
+
+  leanInlineLabel: {
+    fontSize: "13px",
+    opacity: 0.72,
+    marginTop: "6px",
   },
 
   title: {

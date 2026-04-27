@@ -28,8 +28,8 @@ export interface LeanAngleStats {
   sampleCountRight: number;
 }
 
-const MAX_LEAN_ANGLE = 60;
-const MIN_RECORDED_ANGLE = 3;
+const MAX_LEAN_ANGLE = 75;
+const MIN_RECORDED_ANGLE = 2;
 const SMOOTHING_FACTOR = 0.25;
 
 const EMPTY_STATS: LeanAngleStats = {
