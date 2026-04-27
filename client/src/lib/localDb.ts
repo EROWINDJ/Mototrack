@@ -79,7 +79,8 @@ export interface VehicleData {
   poids: string;
   typeVehicule: string;
   carteGriseImage?: string;
-  permisImage?: string;
+  permisRectoImage?: string;
+permisVersoImage?: string;
 }
 
 interface MotoTrackDB extends DBSchema {
