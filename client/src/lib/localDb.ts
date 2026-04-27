@@ -31,6 +31,13 @@ export interface LocalTrip {
   autonomyAfterKm?: number;
 
   maxLeanAngle?: number;
+  leanAngleAvgLeft?: number;
+  leanAngleAvgRight?: number;
+  leanAngleMaxLeft?: number;
+  leanAngleMaxRight?: number;
+  leanAngleSampleCountLeft?: number;
+  leanAngleSampleCountRight?: number;
+
   speedWarnings?: SpeedWarning[];
   shareText?: string;
 
@@ -80,12 +87,6 @@ export interface VehicleData {
   typeVehicule: string;
 
   carteGriseImage?: string;
-
-  /**
-   * Ancien champ conservé pour compatibilité.
-   * Avant, le permis était stocké dans permisImage.
-   * Maintenant, on privilégie permisRectoImage / permisVersoImage.
-   */
   permisImage?: string;
   permisRectoImage?: string;
   permisVersoImage?: string;
@@ -212,7 +213,14 @@ function buildShareText(trip: Omit<LocalTrip, "id" | "shareText">): string {
     }`;
   }
 
-  if (trip.maxLeanAngle && trip.maxLeanAngle > 3) {
+  const leftMax = Number(trip.leanAngleMaxLeft || 0);
+  const rightMax = Number(trip.leanAngleMaxRight || 0);
+
+  if (leftMax > 3 || rightMax > 3) {
+    text += `\n🏁 Angle max. G ${Math.round(leftMax)}° | D ${Math.round(
+      rightMax
+    )}°`;
+  } else if (trip.maxLeanAngle && trip.maxLeanAngle > 3) {
     text += `\n🏁 Angle max. ${Math.round(trip.maxLeanAngle)}°`;
   }
 
@@ -366,7 +374,7 @@ export async function getMotoTrackExportData(): Promise<MotoTrackExportData> {
 
   return {
     app: "MotoTrack",
-    exportVersion: 1,
+    exportVersion: 2,
     exportedAt: new Date().toISOString(),
     settings,
     vehicle,
@@ -391,15 +399,35 @@ function isMotoTrackExportData(data: unknown): data is MotoTrackExportData {
 }
 
 function normalizeImportedTrip(trip: LocalTrip): LocalTrip {
+  const leanAngleMaxLeft = Number(trip.leanAngleMaxLeft) || 0;
+  const leanAngleMaxRight = Number(trip.leanAngleMaxRight) || 0;
+
   const normalizedTrip: LocalTrip = {
     ...trip,
+
     id: trip.id || crypto.randomUUID(),
+
     distanceKm: Number(trip.distanceKm) || 0,
     avgSpeedKmh: Number(trip.avgSpeedKmh) || 0,
     maxSpeedKmh: Number(trip.maxSpeedKmh) || 0,
+
     consumedFuelL: Number(trip.consumedFuelL) || 0,
     consumptionRateL100: Number(trip.consumptionRateL100) || 0,
     durationMinutes: Number(trip.durationMinutes) || 0,
+
+    autonomyBeforeKm: Number(trip.autonomyBeforeKm) || 0,
+    autonomyAfterKm: Number(trip.autonomyAfterKm) || 0,
+
+    leanAngleAvgLeft: Number(trip.leanAngleAvgLeft) || 0,
+    leanAngleAvgRight: Number(trip.leanAngleAvgRight) || 0,
+    leanAngleMaxLeft,
+    leanAngleMaxRight,
+    leanAngleSampleCountLeft: Number(trip.leanAngleSampleCountLeft) || 0,
+    leanAngleSampleCountRight: Number(trip.leanAngleSampleCountRight) || 0,
+
+    maxLeanAngle:
+      Number(trip.maxLeanAngle) ||
+      Math.max(leanAngleMaxLeft, leanAngleMaxRight),
   };
 
   return {

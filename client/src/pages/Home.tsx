@@ -4,7 +4,6 @@ import { useTracking } from "@/context/TrackingContext";
 
 const START_SPEED_THRESHOLD_KMH = 7;
 const START_VALIDATION_SECONDS = 7;
-const MAX_GPS_ACCURACY_METERS = 30;
 
 export default function Home() {
   const { settings, loading, updateFuel } = useLocalSettings();
@@ -17,6 +16,9 @@ export default function Home() {
     isTracking,
     toggleTracking,
     resetRoute,
+    leanAngle,
+    leanAngleStatus,
+    leanAngleStats,
   } = useTracking();
 
   const [isWaitingForStart, setIsWaitingForStart] = useState(false);
@@ -136,8 +138,50 @@ export default function Home() {
     await updateFuel(settings.tankSize);
   };
 
+  const displayedLeanAngle = Math.abs(Math.round(leanAngle));
+  const leanDirectionLabel =
+    leanAngleStats.direction === "left"
+      ? "Gauche"
+      : leanAngleStats.direction === "right"
+      ? "Droite"
+      : "Neutre";
+
   return (
     <div style={styles.container}>
+      <div style={styles.leanCard}>
+        <div style={styles.leanTopLine}>
+          <span style={styles.leanLabel}>Lean angle</span>
+          <span style={styles.leanStatus}>{leanAngleStatus}</span>
+        </div>
+
+        <div style={styles.leanMain}>
+          <span style={styles.leanValue}>{displayedLeanAngle}°</span>
+          <span style={styles.leanDirection}>{leanDirectionLabel}</span>
+        </div>
+
+        <div style={styles.leanStatsGrid}>
+          <div style={styles.leanStat}>
+            <span style={styles.leanStatLabel}>Moy. G</span>
+            <strong>{leanAngleStats.avgLeft.toFixed(1)}°</strong>
+          </div>
+
+          <div style={styles.leanStat}>
+            <span style={styles.leanStatLabel}>Max G</span>
+            <strong>{leanAngleStats.maxLeft.toFixed(1)}°</strong>
+          </div>
+
+          <div style={styles.leanStat}>
+            <span style={styles.leanStatLabel}>Moy. D</span>
+            <strong>{leanAngleStats.avgRight.toFixed(1)}°</strong>
+          </div>
+
+          <div style={styles.leanStat}>
+            <span style={styles.leanStatLabel}>Max D</span>
+            <strong>{leanAngleStats.maxRight.toFixed(1)}°</strong>
+          </div>
+        </div>
+      </div>
+
       <h1 style={styles.title}>Mototrack</h1>
 
       <div style={styles.status}>
@@ -189,8 +233,8 @@ export default function Home() {
 
         {!loading && settings && (
           <div style={styles.autonomyDetails}>
-            Carburant : {settings.currentFuelL.toFixed(1)} / {settings.tankSize} L ·
-            Conso : {settings.consumptionRate} L/100 km
+            Carburant : {settings.currentFuelL.toFixed(1)} / {settings.tankSize}{" "}
+            L · Conso : {settings.consumptionRate} L/100 km
           </div>
         )}
 
@@ -232,6 +276,76 @@ const styles = {
     gap: "20px",
     fontFamily: "sans-serif",
     padding: "24px",
+    paddingBottom: "96px",
+  },
+
+  leanCard: {
+    width: "100%",
+    maxWidth: "360px",
+    padding: "14px",
+    borderRadius: "18px",
+    background: "rgba(59, 130, 246, 0.12)",
+    border: "1px solid rgba(59, 130, 246, 0.28)",
+  },
+
+  leanTopLine: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "8px",
+  },
+
+  leanLabel: {
+    fontSize: "13px",
+    opacity: 0.72,
+    fontWeight: 700,
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.06em",
+  },
+
+  leanStatus: {
+    fontSize: "12px",
+    opacity: 0.65,
+  },
+
+  leanMain: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "center",
+    gap: "10px",
+    marginBottom: "12px",
+  },
+
+  leanValue: {
+    fontSize: "42px",
+    fontWeight: 900,
+  },
+
+  leanDirection: {
+    fontSize: "15px",
+    opacity: 0.78,
+    fontWeight: 700,
+  },
+
+  leanStatsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: "8px",
+  },
+
+  leanStat: {
+    padding: "8px 6px",
+    borderRadius: "12px",
+    background: "rgba(255,255,255,0.08)",
+    textAlign: "center" as const,
+    fontSize: "12px",
+  },
+
+  leanStatLabel: {
+    display: "block",
+    opacity: 0.55,
+    fontSize: "10px",
+    marginBottom: "3px",
   },
 
   title: {

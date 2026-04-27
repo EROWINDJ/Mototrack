@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import useGPS from "@/hooks/useGPS";
+import { useLeanAngle, type LeanAngleStats } from "@/hooks/useLeanAngle";
 import { useLocalSettings } from "@/hooks/useLocalSettings";
 import { useLocalTrips } from "@/hooks/useLocalTrips";
 
@@ -57,8 +58,15 @@ type TrackingContextValue = ReturnType<typeof useGPS> & {
   isTracking: boolean;
   startedAt: Date | null;
   maxSpeed: number;
+
   isGpsReliable: boolean;
   maxGpsAccuracyMeters: number;
+
+  leanAngle: number;
+  leanAngleStatus: string;
+  leanAngleStats: LeanAngleStats;
+  resetLeanAngleStats: () => void;
+
   startTracking: () => void;
   stopTracking: () => Promise<void>;
   toggleTracking: () => void;
@@ -76,6 +84,11 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   const { settings, updateFuel } = useLocalSettings();
   const { addTrip } = useLocalTrips();
 
+  const lean = useLeanAngle(
+    isTracking,
+    settings?.leanCalibration ? settings.leanCalibration : null
+  );
+
   const isGpsReliable =
     typeof gps.accuracy === "number" &&
     gps.accuracy > 0 &&
@@ -89,7 +102,11 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   }, [gps.speed, gps.accuracy, isTracking, isGpsReliable]);
 
   const startTracking = () => {
+    void lean.requestPermission();
+
     gps.resetDistance();
+    lean.resetStats();
+
     setMaxSpeed(0);
     setStartedAt(new Date());
     setIsTracking(true);
@@ -102,19 +119,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       setStartedAt(null);
       setMaxSpeed(0);
       gps.resetDistance();
-      return;
-    }
-
-    if (!isGpsReliable) {
-      console.warn(
-        `[GPS] Trajet non enregistré : précision insuffisante (${Math.round(
-          gps.accuracy ?? 9999
-        )} m)`
-      );
-
-      setStartedAt(null);
-      setMaxSpeed(0);
-      gps.resetDistance();
+      lean.resetStats();
       return;
     }
 
@@ -122,6 +127,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       setStartedAt(null);
       setMaxSpeed(0);
       gps.resetDistance();
+      lean.resetStats();
       return;
     }
 
@@ -165,6 +171,9 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       endInfo = await reverseGeocode(end.lat, end.lng);
     }
 
+    const leanStats = lean.stats;
+    const maxLeanAngle = Math.max(leanStats.maxLeft, leanStats.maxRight);
+
     await addTrip({
       id: crypto.randomUUID(),
       startedAt: startedAt.toISOString(),
@@ -181,6 +190,14 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
       autonomyBeforeKm,
       autonomyAfterKm,
+
+      maxLeanAngle,
+      leanAngleAvgLeft: leanStats.avgLeft,
+      leanAngleAvgRight: leanStats.avgRight,
+      leanAngleMaxLeft: leanStats.maxLeft,
+      leanAngleMaxRight: leanStats.maxRight,
+      leanAngleSampleCountLeft: leanStats.sampleCountLeft,
+      leanAngleSampleCountRight: leanStats.sampleCountRight,
 
       path: safePath,
 
@@ -200,6 +217,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     setStartedAt(null);
     setMaxSpeed(0);
     gps.resetDistance();
+    lean.resetStats();
   };
 
   const toggleTracking = () => {
@@ -211,22 +229,34 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   };
 
   const resetRoute = () => {
-    if (isTracking) return;
-
     gps.resetDistance();
-    setStartedAt(null);
+    lean.resetStats();
     setMaxSpeed(0);
+
+    if (isTracking) {
+      setStartedAt(new Date());
+    } else {
+      setStartedAt(null);
+    }
   };
 
   return (
     <TrackingContext.Provider
       value={{
         ...gps,
+
         isTracking,
         startedAt,
         maxSpeed,
+
         isGpsReliable,
         maxGpsAccuracyMeters: MAX_GPS_ACCURACY_METERS,
+
+        leanAngle: lean.leanAngle,
+        leanAngleStatus: lean.status,
+        leanAngleStats: lean.stats,
+        resetLeanAngleStats: lean.resetStats,
+
         startTracking,
         stopTracking,
         toggleTracking,
