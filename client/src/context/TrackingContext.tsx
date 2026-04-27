@@ -207,7 +207,19 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       endInfo = await reverseGeocode(end.lat, end.lng);
     }
 
-    const leanStats = lean.stats;
+    const leanStats = settings.leanAngleEnabled
+      ? lean.stats
+      : {
+          currentAngle: 0,
+          direction: "neutral" as const,
+          maxLeft: 0,
+          maxRight: 0,
+          avgLeft: 0,
+          avgRight: 0,
+          sampleCountLeft: 0,
+          sampleCountRight: 0,
+        };
+
     const maxLeanAngle = Math.max(leanStats.maxLeft, leanStats.maxRight);
 
     await addTrip({

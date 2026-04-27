@@ -183,15 +183,20 @@ export default function Home() {
   };
 
   const handleSmoothingChange = (mode: LeanSmoothingMode) => {
-    updateSettings({
+    updateSettingsNow({
       leanSmoothingMode: mode,
       leanSmoothingFactor:
         mode === "sport" ? 0.2 : mode === "normal" ? 0.12 : 0.1,
     });
   };
 
-  const displayedLeanAngle = Math.abs(Math.round(leanAngle));
-  const direction = leanAngleStats.direction;
+  const displayedLeanAngle = settings?.leanAngleEnabled
+    ? Math.abs(Math.round(leanAngle))
+    : 0;
+
+  const direction = settings?.leanAngleEnabled
+    ? leanAngleStats.direction
+    : "neutral";
 
   const directionArrow =
     direction === "left" ? "↖" : direction === "right" ? "↗" : "↑";
@@ -205,47 +210,49 @@ export default function Home() {
 
   return (
     <div style={styles.container}>
-      <div style={styles.leanInlineCard}>
-        <div style={styles.leanHeaderRow}>
-          <span style={styles.leanSmallLabel}>Lean angle</span>
+      <button
+        style={styles.globalSettingsButton}
+        onClick={() => setIsSettingsOpen(true)}
+        aria-label="Paramètres MotoTrack"
+      >
+        ⚙️
+      </button>
 
-          <button
-            style={styles.settingsButton}
-            onClick={() => setIsSettingsOpen(true)}
-            aria-label="Paramètres MotoTrack"
-          >
-            ⚙️
-          </button>
-        </div>
-
-        <div style={styles.leanStatusRow}>
-          <span style={styles.leanSmallStatus}>{leanAngleStatus}</span>
-          {settings?.leanCalibration?.calibratedAt && (
-            <span style={styles.leanCalibrated}>calibré</span>
-          )}
-        </div>
-
-        <div style={styles.leanInlineContent}>
-          <div
-            style={{
-              ...styles.leanArrowBadge,
-              transform:
-                direction === "left"
-                  ? "rotate(-18deg)"
-                  : direction === "right"
-                  ? "rotate(18deg)"
-                  : "rotate(0deg)",
-            }}
-          >
-            {directionArrow}
+      {settings?.leanAngleEnabled && (
+        <div style={styles.leanInlineCard}>
+          <div style={styles.leanHeaderRow}>
+            <span style={styles.leanSmallLabel}>Lean angle</span>
+            <span style={styles.leanSmallStatus}>{leanAngleStatus}</span>
           </div>
 
-          <div style={styles.leanInlineTextBlock}>
-            <div style={styles.leanInlineValue}>{displayedLeanAngle}°</div>
-            <div style={styles.leanInlineLabel}>{directionLabel}</div>
+          <div style={styles.leanStatusRow}>
+            {settings?.leanCalibration?.calibratedAt && (
+              <span style={styles.leanCalibrated}>calibré</span>
+            )}
+          </div>
+
+          <div style={styles.leanInlineContent}>
+            <div
+              style={{
+                ...styles.leanArrowBadge,
+                transform:
+                  direction === "left"
+                    ? "rotate(-18deg)"
+                    : direction === "right"
+                    ? "rotate(18deg)"
+                    : "rotate(0deg)",
+              }}
+            >
+              {directionArrow}
+            </div>
+
+            <div style={styles.leanInlineTextBlock}>
+              <div style={styles.leanInlineValue}>{displayedLeanAngle}°</div>
+              <div style={styles.leanInlineLabel}>{directionLabel}</div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <h1 style={styles.title}>Mototrack</h1>
 
@@ -348,135 +355,162 @@ export default function Home() {
             <section style={styles.settingsSection}>
               <h3 style={styles.sectionTitle}>Lean angle</h3>
 
+              <div style={styles.betaNotice}>
+                Cette fonctionnalité est une version bêta. Des ajustements
+                seront effectués dans les prochaines mises à jour. Les résultats
+                peuvent différer selon les modèles de smartphone, le support
+                utilisé et la position du téléphone.
+              </div>
+
               <div style={styles.toggleRow}>
                 <div>
-                  <strong>Activer le Lean angle</strong>
+                  <strong>Lean angle</strong>
                   <p style={styles.settingHelp}>
-                    Désactive l’affichage et l’enregistrement des angles.
+                    Active ou désactive l’affichage et l’enregistrement des
+                    angles.
                   </p>
                 </div>
 
-                <input
-                  type="checkbox"
-                  checked={settings.leanAngleEnabled}
-                  onChange={(event) =>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.toggleButton,
+                    ...(settings.leanAngleEnabled
+                      ? styles.toggleButtonActive
+                      : styles.toggleButtonInactive),
+                  }}
+                  onClick={() =>
                     updateSettingsNow({
-                      leanAngleEnabled: event.target.checked,
+                      leanAngleEnabled: !settings.leanAngleEnabled,
                     })
                   }
-                />
-              </div>
-
-              <div style={styles.calibrationBox}>
-                <strong>Calibration 0°</strong>
-                <p style={styles.settingHelp}>
-                  Placez le deux-roues droit, guidon droit, téléphone fixé
-                  normalement, puis lancez la calibration.
-                </p>
-
-                <div style={styles.calibrationButtons}>
-                  <button
-                    style={styles.secondaryButton}
-                    onClick={handleRequestPermission}
-                  >
-                    Autoriser capteurs
-                  </button>
-
-                  <button
-                    style={styles.primaryButton}
-                    disabled={isCalibrating}
-                    onClick={handleCalibrateZero}
-                  >
-                    {isCalibrating ? "Calibration..." : "Définir 0°"}
-                  </button>
-                </div>
-
-                {settings.leanCalibration && (
-                  <div style={styles.calibrationInfo}>
-                    Dernière calibration :{" "}
-                    {new Date(
-                      settings.leanCalibration.calibratedAt
-                    ).toLocaleString("fr-FR")}
-                    <br />
-                    Gamma référence : {settings.leanCalibration.gamma.toFixed(1)}°
-                  </div>
-                )}
-
-                {calibrationMessage && (
-                  <div style={styles.calibrationMessage}>
-                    {calibrationMessage}
-                  </div>
-                )}
-              </div>
-
-              <SettingNumber
-                label="Angle affiché dès"
-                help="Seuil minimum pour afficher gauche/droite sur l’accueil."
-                value={settings.leanMinDisplayAngle}
-                unit="°"
-                min={0}
-                max={30}
-                step={1}
-                onChange={(value) =>
-                  updateSettings({ leanMinDisplayAngle: value })
-                }
-              />
-
-              <SettingNumber
-                label="Angle enregistré dès"
-                help="Seuil minimum pour les statistiques de trajet."
-                value={settings.leanMinRecordedAngle}
-                unit="°"
-                min={0}
-                max={60}
-                step={1}
-                onChange={(value) =>
-                  updateSettings({ leanMinRecordedAngle: value })
-                }
-              />
-
-              <SettingNumber
-                label="Vitesse minimale de calcul"
-                help="En dessous de cette vitesse, les angles ne sont pas enregistrés."
-                value={settings.leanMinSpeedKmh}
-                unit="km/h"
-                min={0}
-                max={80}
-                step={1}
-                onChange={(value) => updateSettings({ leanMinSpeedKmh: value })}
-              />
-
-              <SettingNumber
-                label="Angle maximum accepté"
-                help="Plafond anti-valeurs aberrantes."
-                value={settings.leanMaxAngle}
-                unit="°"
-                min={30}
-                max={90}
-                step={1}
-                onChange={(value) => updateSettings({ leanMaxAngle: value })}
-              />
-
-              <label style={styles.settingField}>
-                <span style={styles.settingLabel}>Lissage</span>
-                <span style={styles.settingHelp}>
-                  Souple = stable, Sport = plus réactif.
-                </span>
-
-                <select
-                  value={settings.leanSmoothingMode}
-                  style={styles.select}
-                  onChange={(event) =>
-                    handleSmoothingChange(
-                      event.target.value as LeanSmoothingMode
-                    )
-                  }
                 >
-                  <option value="soft">Souple</option>
-                  <option value="normal">Normal</option>
-                  <option value="sport">Sport</option>
-                </select>
-              </label>
+                  {settings.leanAngleEnabled ? "Activé" : "Désactivé"}
+                </button>
+              </div>
+
+              {settings.leanAngleEnabled ? (
+                <>
+                  <div style={styles.calibrationBox}>
+                    <strong>Calibration 0°</strong>
+                    <p style={styles.settingHelp}>
+                      Placez le deux-roues droit, guidon droit, téléphone fixé
+                      normalement, puis lancez la calibration.
+                    </p>
+
+                    <div style={styles.calibrationButtons}>
+                      <button
+                        style={styles.secondaryButton}
+                        onClick={handleRequestPermission}
+                      >
+                        Autoriser capteurs
+                      </button>
+
+                      <button
+                        style={styles.primaryButton}
+                        disabled={isCalibrating}
+                        onClick={handleCalibrateZero}
+                      >
+                        {isCalibrating ? "Calibration..." : "Définir 0°"}
+                      </button>
+                    </div>
+
+                    {settings.leanCalibration && (
+                      <div style={styles.calibrationInfo}>
+                        Dernière calibration :{" "}
+                        {new Date(
+                          settings.leanCalibration.calibratedAt
+                        ).toLocaleString("fr-FR")}
+                        <br />
+                        Gamma référence :{" "}
+                        {settings.leanCalibration.gamma.toFixed(1)}°
+                      </div>
+                    )}
+
+                    {calibrationMessage && (
+                      <div style={styles.calibrationMessage}>
+                        {calibrationMessage}
+                      </div>
+                    )}
+                  </div>
+
+                  <SettingNumber
+                    label="Angle affiché dès"
+                    help="Seuil minimum pour afficher gauche/droite sur l’accueil."
+                    recommendation="Recommandé : 5°."
+                    value={settings.leanMinDisplayAngle}
+                    unit="°"
+                    min={0}
+                    max={30}
+                    onChange={(value) =>
+                      updateSettings({ leanMinDisplayAngle: value })
+                    }
+                  />
+
+                  <SettingNumber
+                    label="Angle enregistré dès"
+                    help="Seuil minimum pour les statistiques de trajet."
+                    recommendation="Recommandé : 20° pour éviter les faux positifs."
+                    value={settings.leanMinRecordedAngle}
+                    unit="°"
+                    min={0}
+                    max={60}
+                    onChange={(value) =>
+                      updateSettings({ leanMinRecordedAngle: value })
+                    }
+                  />
+
+                  <SettingNumber
+                    label="Vitesse minimale de calcul"
+                    help="En dessous de cette vitesse, les angles ne sont pas enregistrés."
+                    recommendation="Recommandé : 15 km/h."
+                    value={settings.leanMinSpeedKmh}
+                    unit="km/h"
+                    min={0}
+                    max={80}
+                    onChange={(value) =>
+                      updateSettings({ leanMinSpeedKmh: value })
+                    }
+                  />
+
+                  <SettingNumber
+                    label="Angle maximum accepté"
+                    help="Plafond anti-valeurs aberrantes."
+                    recommendation="Recommandé : 75°. Monter au-delà uniquement pour usage piste/test."
+                    value={settings.leanMaxAngle}
+                    unit="°"
+                    min={30}
+                    max={90}
+                    onChange={(value) => updateSettings({ leanMaxAngle: value })}
+                  />
+
+                  <label style={styles.settingField}>
+                    <span style={styles.settingLabel}>Lissage</span>
+                    <span style={styles.settingHelp}>
+                      Souple = stable, Sport = plus réactif.
+                    </span>
+
+                    <select
+                      value={settings.leanSmoothingMode}
+                      style={styles.select}
+                      onChange={(event) =>
+                        handleSmoothingChange(
+                          event.target.value as LeanSmoothingMode
+                        )
+                      }
+                    >
+                      <option value="soft">Souple</option>
+                      <option value="normal">Normal</option>
+                      <option value="sport">Sport</option>
+                    </select>
+                  </label>
+                </>
+              ) : (
+                <div style={styles.disabledNotice}>
+                  Lean angle est désactivé. L’affichage disparaît de l’accueil
+                  et aucun angle ne sera enregistré dans les trajets.
+                </div>
+              )}
             </section>
 
             <button
@@ -495,39 +529,64 @@ export default function Home() {
 function SettingNumber({
   label,
   help,
+  recommendation,
   value,
   unit,
   min,
   max,
-  step,
   onChange,
 }: {
   label: string;
   help: string;
+  recommendation?: string;
   value: number;
   unit: string;
   min: number;
   max: number;
-  step: number;
   onChange: (value: number) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(String(value));
+
+  useEffect(() => {
+    setDraftValue(String(value));
+  }, [value]);
+
+  const commitValue = () => {
+    const parsed = Number(String(draftValue).replace(",", "."));
+
+    if (!Number.isFinite(parsed)) {
+      setDraftValue(String(value));
+      return;
+    }
+
+    const clamped = Math.min(max, Math.max(min, parsed));
+
+    setDraftValue(String(clamped));
+    onChange(clamped);
+  };
+
   return (
     <label style={styles.settingField}>
       <span style={styles.settingLabel}>{label}</span>
       <span style={styles.settingHelp}>{help}</span>
 
+      {recommendation && (
+        <span style={styles.settingRecommendation}>{recommendation}</span>
+      )}
+
       <div style={styles.settingNumberRow}>
         <input
-          type="number"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
+          type="text"
+          inputMode="decimal"
+          value={draftValue}
           style={styles.settingInput}
-          onChange={(event) => {
-            const parsed = Number(event.target.value);
-            if (!Number.isFinite(parsed)) return;
-            onChange(Math.min(max, Math.max(min, parsed)));
+          onChange={(event) => setDraftValue(event.target.value)}
+          onBlur={commitValue}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              commitValue();
+              event.currentTarget.blur();
+            }
           }}
         />
 
@@ -550,6 +609,22 @@ const styles = {
     fontFamily: "sans-serif",
     padding: "24px",
     paddingBottom: "96px",
+  },
+
+  globalSettingsButton: {
+    position: "fixed" as const,
+    top: "18px",
+    right: "18px",
+    zIndex: 20,
+    width: "42px",
+    height: "42px",
+    borderRadius: "14px",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(255,255,255,0.08)",
+    color: "white",
+    fontSize: "20px",
+    cursor: "pointer",
+    backdropFilter: "blur(10px)",
   },
 
   leanInlineCard: {
@@ -596,17 +671,6 @@ const styles = {
     color: "#bbf7d0",
     background: "rgba(34,197,94,0.12)",
     border: "1px solid rgba(34,197,94,0.25)",
-  },
-
-  settingsButton: {
-    width: "34px",
-    height: "34px",
-    borderRadius: "12px",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.08)",
-    color: "white",
-    cursor: "pointer",
-    fontSize: "17px",
   },
 
   leanInlineContent: {
@@ -865,6 +929,17 @@ const styles = {
     fontWeight: 900,
   },
 
+  betaNotice: {
+    padding: "12px",
+    borderRadius: "14px",
+    background: "rgba(250,204,21,0.12)",
+    border: "1px solid rgba(250,204,21,0.24)",
+    color: "#fde68a",
+    fontSize: "12px",
+    lineHeight: 1.45,
+    marginBottom: "12px",
+  },
+
   toggleRow: {
     display: "flex",
     justifyContent: "space-between",
@@ -876,12 +951,40 @@ const styles = {
     marginBottom: "12px",
   },
 
+  toggleButton: {
+    minWidth: "96px",
+    minHeight: "38px",
+    borderRadius: "999px",
+    fontWeight: 900,
+    border: "1px solid rgba(255,255,255,0.12)",
+  },
+
+  toggleButtonActive: {
+    background: "rgba(34,197,94,0.18)",
+    color: "#bbf7d0",
+    borderColor: "rgba(34,197,94,0.35)",
+  },
+
+  toggleButtonInactive: {
+    background: "rgba(239,68,68,0.16)",
+    color: "#fecaca",
+    borderColor: "rgba(239,68,68,0.35)",
+  },
+
   settingHelp: {
     display: "block",
     marginTop: "4px",
     fontSize: "12px",
     opacity: 0.62,
     lineHeight: 1.4,
+  },
+
+  settingRecommendation: {
+    display: "block",
+    marginTop: "5px",
+    fontSize: "12px",
+    color: "#bfdbfe",
+    lineHeight: 1.35,
   },
 
   calibrationBox: {
@@ -931,6 +1034,16 @@ const styles = {
     background: "rgba(255,255,255,0.08)",
     fontSize: "12px",
     lineHeight: 1.4,
+  },
+
+  disabledNotice: {
+    padding: "14px",
+    borderRadius: "14px",
+    background: "rgba(239,68,68,0.12)",
+    border: "1px solid rgba(239,68,68,0.22)",
+    color: "#fecaca",
+    fontSize: "13px",
+    lineHeight: 1.45,
   },
 
   settingField: {

@@ -137,6 +137,7 @@ interface MotoTrackDB extends DBSchema {
 
 const DB_NAME = "mototrack-v1";
 const DB_VERSION = 4;
+const SETTINGS_UPDATED_EVENT = "mototrack:settings-updated";
 
 let dbPromise: Promise<IDBPDatabase<MotoTrackDB>> | null = null;
 
@@ -280,6 +281,21 @@ function normalizeSmoothingMode(value: unknown): LeanSmoothingMode {
   return "soft";
 }
 
+function normalizeNumberSetting(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, numeric));
+}
+
 function normalizeSettings(settings: LocalSettings): LocalSettings {
   const tankSize = Math.max(0, Number(settings.tankSize) || 0);
   const consumptionRate = Math.max(0, Number(settings.consumptionRate) || 0);
@@ -300,41 +316,54 @@ function normalizeSettings(settings: LocalSettings): LocalSettings {
     tankSize,
     consumptionRate,
     currentFuelL,
-    reserveThresholdKm: Math.max(0, Number(settings.reserveThresholdKm) || 0),
-    stopDurationForRefuelAlert: Math.max(
+    reserveThresholdKm: normalizeNumberSetting(
+      settings.reserveThresholdKm,
+      DEFAULT_SETTINGS.reserveThresholdKm,
       0,
-      Number(settings.stopDurationForRefuelAlert) || 0
+      1000
+    ),
+    stopDurationForRefuelAlert: normalizeNumberSetting(
+      settings.stopDurationForRefuelAlert,
+      DEFAULT_SETTINGS.stopDurationForRefuelAlert,
+      0,
+      120
     ),
 
     leanCalibration: settings.leanCalibration || null,
-    leanAngleEnabled: Boolean(settings.leanAngleEnabled ?? true),
-    leanMaxAngle: Math.min(
-      90,
-      Math.max(30, Number(settings.leanMaxAngle) || DEFAULT_SETTINGS.leanMaxAngle)
-    ),
-    leanMinDisplayAngle: Math.min(
+
+    leanAngleEnabled:
+      settings.leanAngleEnabled === undefined
+        ? DEFAULT_SETTINGS.leanAngleEnabled
+        : Boolean(settings.leanAngleEnabled),
+
+    leanMaxAngle: normalizeNumberSetting(
+      settings.leanMaxAngle,
+      DEFAULT_SETTINGS.leanMaxAngle,
       30,
-      Math.max(
-        0,
-        Number(settings.leanMinDisplayAngle) ||
-          DEFAULT_SETTINGS.leanMinDisplayAngle
-      )
+      90
     ),
-    leanMinRecordedAngle: Math.min(
-      60,
-      Math.max(
-        0,
-        Number(settings.leanMinRecordedAngle) ||
-          DEFAULT_SETTINGS.leanMinRecordedAngle
-      )
+
+    leanMinDisplayAngle: normalizeNumberSetting(
+      settings.leanMinDisplayAngle,
+      DEFAULT_SETTINGS.leanMinDisplayAngle,
+      0,
+      30
     ),
-    leanMinSpeedKmh: Math.min(
-      80,
-      Math.max(
-        0,
-        Number(settings.leanMinSpeedKmh) || DEFAULT_SETTINGS.leanMinSpeedKmh
-      )
+
+    leanMinRecordedAngle: normalizeNumberSetting(
+      settings.leanMinRecordedAngle,
+      DEFAULT_SETTINGS.leanMinRecordedAngle,
+      0,
+      60
     ),
+
+    leanMinSpeedKmh: normalizeNumberSetting(
+      settings.leanMinSpeedKmh,
+      DEFAULT_SETTINGS.leanMinSpeedKmh,
+      0,
+      80
+    ),
+
     leanSmoothingMode,
     leanSmoothingFactor: smoothingFactorFromMode(leanSmoothingMode),
   };
@@ -536,7 +565,7 @@ export async function importMotoTrackData(
     tripsImported += 1;
   }
 
-  window.dispatchEvent(new Event("mototrack:settings-updated"));
+  window.dispatchEvent(new Event(SETTINGS_UPDATED_EVENT));
 
   return {
     settingsImported: true,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface CalibrationData {
   beta: number;
@@ -92,7 +92,14 @@ export function useLeanAngle(
   speedKmh = 0,
   rawOptions?: Partial<LeanAngleOptions>
 ) {
-  const options = normalizeOptions(rawOptions);
+  const options = useMemo(() => normalizeOptions(rawOptions), [
+    rawOptions?.enabled,
+    rawOptions?.maxAngle,
+    rawOptions?.minDisplayAngle,
+    rawOptions?.minRecordedAngle,
+    rawOptions?.minSpeedKmh,
+    rawOptions?.smoothingFactor,
+  ]);
 
   const [leanAngle, setLeanAngle] = useState(0);
   const [status, setStatus] = useState<LeanAngleStatus>("unavailable");
